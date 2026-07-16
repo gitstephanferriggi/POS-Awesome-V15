@@ -41,11 +41,35 @@ export const useItemsSelectorFocus = ({
 		return inputRef ?? null;
 	};
 
+	// Always resolve to a real focusable DOM element. The search field ref is a
+	// Vuetify <v-text-field> INSTANCE whose top-level `.focus` is not reliably a
+	// function, so returning it directly caused "k.value.focus is not a function"
+	// and a failed refocus (leaving focus on the cart qty box, so the next scan
+	// landed in the quantity field). Prefer the nested <input>; never return a
+	// target that lacks a callable focus().
 	const getFocusableTarget = () => {
 		const input = getSearchInputField();
 		if (!input) return null;
 		const nestedInput = input?.$el?.querySelector?.("input");
-		return nestedInput ?? input;
+		if (nestedInput) return nestedInput;
+		if (input instanceof Element) return input;
+		return typeof (input as { focus?: unknown }).focus === "function"
+			? input
+			: null;
+	};
+
+	// Authoritative refocus via the ItemHeader-exposed focusInput() when present.
+	const focusViaHeader = (): boolean => {
+		const vm = getVm();
+		const header = vm?.$refs?.itemHeader;
+		if (header && typeof header.focusInput === "function") {
+			try {
+				return header.focusInput() === true;
+			} catch {
+				return false;
+			}
+		}
+		return false;
 	};
 
 	const isElementHiddenFromInteraction = (element: Element | null) => {
@@ -155,8 +179,16 @@ export const useItemsSelectorFocus = ({
 				return;
 			}
 			releaseInaccessibleFocus();
+			// Try the ItemHeader-exposed authoritative focus first; it resolves the
+			// nested DOM input safely. Fall back to local resolution below.
+			if (focusViaHeader()) {
+				return;
+			}
 			const input = getFocusableTarget();
 			if (!input || typeof input.focus !== "function") {
+				if (attempt < MAX_FOCUS_RETRIES) {
+					scheduleFocusAttempt(attempt);
+				}
 				return;
 			}
 			const target = input instanceof Element ? input : null;
