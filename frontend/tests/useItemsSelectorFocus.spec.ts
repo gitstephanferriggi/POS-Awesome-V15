@@ -65,6 +65,48 @@ describe("useItemsSelectorFocus", () => {
 		expect(nestedFocusSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("uses the exposed ItemHeader.focusInput() authoritative path when available", () => {
+		// Regression: previously debounce_search.value was a Vuetify instance whose
+		// `.focus` was not a function, throwing "k.value.focus is not a function"
+		// and leaving focus on the cart qty box so the next scan typed into qty.
+		const focusInput = vi.fn(() => true);
+		const instanceWithoutFocus = { value: { notFocus: true } };
+		const vm = createVm({
+			$refs: {
+				itemHeader: {
+					debounce_search: instanceWithoutFocus,
+					focusInput,
+				},
+			},
+		});
+		const focusApi = useItemsSelectorFocus({
+			getVM: () => vm,
+			scannerInput: {},
+			itemSelection: { handleSearchKeydown: vi.fn(() => false) },
+		});
+
+		// Must not throw even though the raw instance lacks a callable focus.
+		expect(() => focusApi.focusItemSearch()).not.toThrow();
+		expect(focusInput).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not throw when the search field instance lacks a callable focus and no header focusInput exists", () => {
+		const vm = createVm({
+			$refs: {
+				itemHeader: {
+					debounce_search: { value: { notFocus: true } },
+				},
+			},
+		});
+		const focusApi = useItemsSelectorFocus({
+			getVM: () => vm,
+			scannerInput: {},
+			itemSelection: { handleSearchKeydown: vi.fn(() => false) },
+		});
+
+		expect(() => focusApi.focusItemSearch()).not.toThrow();
+	});
+
 	it("skips focusing while camera scanning is active", () => {
 		const vm = createVm({ cameraScannerActive: true });
 		const focusApi = useItemsSelectorFocus({
