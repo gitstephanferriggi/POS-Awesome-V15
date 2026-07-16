@@ -243,8 +243,37 @@ const handleSearchKeydown = (event) => {
 	emit("search-keydown", event);
 };
 
+// Resolve the real focusable DOM <input> for the search field. `debounce_search`
+// is a Vuetify <v-text-field> component instance whose `.focus` is not reliably
+// a function across builds/lifecycle states, which previously caused
+// "k.value.focus is not a function" and left focus stuck on the cart qty box
+// after a scan (so the next scan typed into the quantity field).
+const resolveSearchInputEl = () => {
+	const instance = debounce_search.value;
+	if (!instance) return null;
+	const el = instance.$el ?? instance;
+	if (el && typeof el.querySelector === "function") {
+		const nested = el.querySelector("input");
+		if (nested) return nested;
+	}
+	if (typeof instance.focus === "function") return instance;
+	return null;
+};
+
+// Authoritative, always-safe focus entry point used by the scanner refocus path.
+const focusInput = () => {
+	const target = resolveSearchInputEl();
+	if (target && typeof target.focus === "function") {
+		target.focus();
+		return true;
+	}
+	return false;
+};
+
 defineExpose({
 	debounce_search,
+	resolveSearchInputEl,
+	focusInput,
 });
 </script>
 
