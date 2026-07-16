@@ -562,33 +562,14 @@ export default {
 			this.uiStore.triggerItemSearchFocus();
 		},
 
-		focusCartItemQty(payload = {}) {
-			const rows = Array.isArray(this.items) ? this.items : [];
-			if (!rows.length) return;
-
-			const requestedItem = payload?.item || payload;
-			const rowId = payload?.rowId || requestedItem?.posa_row_id;
-			const itemCode = payload?.itemCode || requestedItem?.item_code;
-			let index = -1;
-
-			if (rowId) {
-				index = rows.findIndex((row) => row?.posa_row_id === rowId);
-			}
-			if (index < 0 && itemCode) {
-				index = rows.findIndex((row) => row?.item_code === itemCode);
-			}
-			if (index < 0) {
-				index = 0;
-			}
-
-			this.$nextTick(() => {
-				window.setTimeout(() => {
-					const focused = this.$refs.itemsTableRef?.focusItemField?.(index, "qty");
-					if (!focused && index !== 0) {
-						this.$refs.itemsTableRef?.focusItemField?.(0, "qty");
-					}
-				}, 0);
-			});
+		focusCartItemQty() {
+			// Adding an item (manual click OR barcode scan) must NOT park the cursor
+			// in the cart quantity editor. The line is already added with qty 1; the
+			// register workflow requires focus to return to the item search box so
+			// the next item can be searched/scanned immediately. Previously this
+			// focused the new row's qty field, which left the qty editor open and
+			// empty — so a subsequent scan/click was mis-handled. Redirect to search.
+			this.focusItemSearchField();
 		},
 
 		focusAdditionalDiscountField() {
