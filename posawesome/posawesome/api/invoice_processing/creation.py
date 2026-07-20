@@ -892,6 +892,28 @@ def _apply_return_outstanding_policy(invoice_doc):
     invoice_doc.update_outstanding_for_self = cint(return_total > against_voucher_outstanding)
 
 
+def _ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry=0):
+    """Keep is_pos set for POS Invoice docs to satisfy core validation.
+
+    ERPNext's POS Invoice.validate() throws
+    "POS Invoice should have the field Include Payment checked" whenever
+    ``is_pos`` (the field labelled "Include Payment") is falsy. A zero-payment
+    return such as "Store as Credit?" leaves every payment row at 0, and the
+    client previously cleared ``is_pos`` for any zero-payment return -- which is
+    correct for a Sales Invoice credit note but breaks a POS Invoice.
+
+    We only re-assert ``is_pos`` for the POS Invoice doctype and never for the
+    advance/Payment-Entry redemption path, which deliberately converts the
+    document off the POS payment flow (is_payment_entry=1).
+    """
+    if invoice_doc.doctype != "POS Invoice":
+        return
+    if cint(is_payment_entry):
+        return
+    if not cint(invoice_doc.get("is_pos")):
+        invoice_doc.is_pos = 1
+
+
 def _is_return_outstanding_message(message):
     if isinstance(message, dict):
         text = message.get("message") or ""
@@ -1353,6 +1375,7 @@ def submit_invoice(invoice, data, submit_in_background=False):
 
     _validate_credit_sale_allowed(invoice_doc, data)
     _apply_write_off_settings(invoice_doc, data)
+    _ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry)
 
     invoice_doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
@@ -1492,6 +1515,7 @@ def submit_in_background_job(kwargs):
 
         _apply_invoice_gift_card_settlement(invoice_doc, data)
         _normalize_return_payment_rows(invoice_doc, invoice_doc.get("conversion_rate") or 1)
+        _ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry)
 
         invoice_doc = _save_draft_with_latest_timestamp(invoice_doc)
         _normalize_return_payment_rows(invoice_doc, invoice_doc.get("conversion_rate") or 1)

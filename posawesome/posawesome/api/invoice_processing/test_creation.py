@@ -410,6 +410,66 @@ class TestUpdateInvoiceReturnPayments(unittest.TestCase):
 
         self.assertEqual(invoice_doc.update_outstanding_for_self, 0)
 
+    def test_pos_invoice_credit_return_keeps_include_payment_checked(self):
+        # "Store as Credit?" zeroes every payment row, so the client would have
+        # cleared is_pos. For a POS Invoice this must be re-asserted, otherwise
+        # ERPNext throws "POS Invoice should have the field Include Payment
+        # checked" (the is_pos field is labelled "Include Payment").
+        invoice_doc = FakeDoc(
+            doctype="POS Invoice",
+            is_return=1,
+            is_pos=0,
+            return_against="ACC-PSINV-2026-01202",
+            paid_amount=0,
+        )
+
+        self.creation._ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry=0)
+
+        self.assertEqual(int(invoice_doc.is_pos), 1)
+
+    def test_pos_invoice_credit_return_leaves_already_checked_include_payment(self):
+        invoice_doc = FakeDoc(
+            doctype="POS Invoice",
+            is_return=1,
+            is_pos=1,
+            return_against="ACC-PSINV-2026-01202",
+            paid_amount=0,
+        )
+
+        self.creation._ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry=0)
+
+        self.assertEqual(int(invoice_doc.is_pos), 1)
+
+    def test_sales_invoice_credit_return_does_not_force_include_payment(self):
+        # A Sales Invoice credit note legitimately runs with is_pos = 0; the
+        # guard must not touch it.
+        invoice_doc = FakeDoc(
+            doctype="Sales Invoice",
+            is_return=1,
+            is_pos=0,
+            return_against="ACC-SINV-2026-00005",
+            paid_amount=0,
+        )
+
+        self.creation._ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry=0)
+
+        self.assertEqual(int(invoice_doc.is_pos), 0)
+
+    def test_pos_invoice_advance_redemption_keeps_include_payment_cleared(self):
+        # The advance/Payment-Entry redemption path deliberately converts the
+        # document off the POS payment flow (is_payment_entry=1) and clears
+        # is_pos on purpose; the guard must respect that.
+        invoice_doc = FakeDoc(
+            doctype="POS Invoice",
+            is_return=0,
+            is_pos=0,
+            paid_amount=0,
+        )
+
+        self.creation._ensure_pos_invoice_include_payment(invoice_doc, is_payment_entry=1)
+
+        self.assertEqual(int(invoice_doc.is_pos), 0)
+
     def test_linked_return_filters_only_erpnext_outstanding_info_messages(self):
         invoice_doc = FakeDoc(
             is_return=1,

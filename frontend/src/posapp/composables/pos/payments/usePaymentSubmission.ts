@@ -806,7 +806,19 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			});
 		}
 
-		if (doc.is_return && totalPayedAmount === 0) {
+		// A zero-payment return (e.g. "Store as Credit?") is recorded as a credit
+		// note. For a Sales Invoice we clear is_pos so ERPNext books it purely as a
+		// credit note. For a POS Invoice doctype we MUST keep is_pos = 1: ERPNext's
+		// POS Invoice.validate() throws "POS Invoice should have the field Include
+		// Payment checked" (the is_pos field is labelled "Include Payment") when it
+		// is falsy. The credit/outstanding behaviour for the return is handled by
+		// the zeroed payment rows plus the server-side return outstanding policy,
+		// so is_pos must stay set for POS Invoices.
+		if (
+			doc.is_return &&
+			totalPayedAmount === 0 &&
+			doc.doctype !== "POS Invoice"
+		) {
 			doc.is_pos = 0;
 		}
 
