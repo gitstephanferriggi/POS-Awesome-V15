@@ -9,7 +9,10 @@ import {
 import { ensureInvoiceClientRequestId } from "../../../../offline/idempotency";
 import stockCoordinator from "../../../utils/stockCoordinator";
 import { parseBooleanSetting } from "../../../utils/stock";
-import { resolvePosDocumentDoctype } from "../../../utils/posDocumentMode";
+import {
+	resolvePosDocumentDoctype,
+	isPosOrderTypeDocument,
+} from "../../../utils/posDocumentMode";
 import { toCompanyCurrency } from "../../../utils/erpnextCurrency";
 import { shouldApplyReturnRefundCap } from "../../../utils/paymentInitialization";
 
@@ -78,6 +81,23 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		...(doc || {}),
 		pos_profile: unref(posProfile),
 	});
+
+	// Order-type documents (Sales Order / Quotation) use the deposit/advance
+	// workflow: settle against grand_total (never rounded), no cash change, and
+	// no silent over-allocation. See posDocumentMode.getPosSettlementTotal.
+	const isOrderTypeDoc = (doc = unref(invoiceDoc)) =>
+		isPosOrderTypeDocument({
+			invoiceType: unref(invoiceType),
+			posProfile: unref(posProfile),
+			doc,
+		});
+
+	const getSettlementTotal = (doc: any, prec: number) => {
+		if (!doc) return 0;
+		const grand = formatFloat(doc.grand_total, prec);
+		if (isOrderTypeDoc(doc)) return grand;
+		return formatFloat(doc.rounded_total || doc.grand_total, prec);
+	};
 
 	const formatStockErrors = (errors: any[]) => {
 		const settings = unref(stockSettings) || {};
@@ -483,14 +503,28 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			);
 		}
 
-		const invoice_total = formatFloat(
-			doc.rounded_total || doc.grand_total,
-			prec,
-		);
+		const invoice_total = getSettlementTotal(doc, prec);
 		const effective_total_payments = formatFloat(
 			current_total_payments + writeOffAmount,
 			prec,
 		);
+
+		// Order-type (Sales Order / Quotation): the backend books one Payment Entry
+		// per payment row with allocated_amount = row amount, referenced to the
+		// Sales Order. It has NO safe way to absorb an overpayment (an over-allocated
+		// reference is rejected / left unallocated). So block excess here with a
+		// clear message instead of creating an incorrect Payment Entry. Surplus is
+		// never converted to cash change for an advance.
+		if (!doc.is_return && isOrderTypeDoc(doc)) {
+			if (formatFloat(current_total_payments, prec) > invoice_total + 0.001) {
+				throw new Error(
+					__(
+						"Payment for a Sales Order cannot exceed its total ({0}). Enter the exact amount or a smaller deposit; excess is not recorded as change.",
+						[invoice_total],
+					),
+				);
+			}
+		}
 		const writeOffLimit = getWriteOffLimit(profile);
 		const writeOffCappedByLimit =
 			Boolean(unref(options.is_write_off_change)) &&
@@ -875,6 +909,14 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				pChange = formatFloat(changeLimit, prec);
 				cChange = 0;
 			}
+		}
+
+		// Order-type (Sales Order / Quotation): deposit/advance workflow never has
+		// cash change. Force all change fields to zero regardless of upstream state
+		// so no surplus is silently returned or booked as change.
+		if (!doc.is_return && isOrderTypeDoc(doc)) {
+			pChange = 0;
+			cChange = 0;
 		}
 
 		if (doc) {

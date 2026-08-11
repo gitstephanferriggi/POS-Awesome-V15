@@ -3,6 +3,7 @@ import { ref, unref, type Ref, type ComputedRef } from "vue";
 import { getSmartTenderSuggestions } from "../../../../utils/smartTender";
 import { toCompanyCurrency } from "../../../utils/erpnextCurrency";
 import { isCashLikePaymentLine } from "../../../utils/cashTender";
+import { isPosOrderTypeDocument } from "../../../utils/posDocumentMode";
 
 declare const frappe: any;
 declare const __: (_str: string, _args?: any[]) => string;
@@ -10,6 +11,9 @@ declare const __: (_str: string, _args?: any[]) => string;
 export interface PaymentMethodsOptions {
 	invoiceDoc: Ref<any>;
 	posProfile: Ref<any>;
+	// Optional: current POS invoice type. Order-type docs (Sales Order /
+	// Quotation) settle against grand_total, never rounded_total.
+	invoiceType?: Ref<string>;
 	diffPayment?: ComputedRef<number>;
 	getNetInvoiceAmount?: () => number;
 	formatFloat?: (_val: any) => number;
@@ -51,12 +55,26 @@ export function usePaymentMethods(options: PaymentMethodsOptions) {
 		pos_profile: unref(posProfile),
 	});
 
+	const isOrderTypeDoc = () =>
+		isPosOrderTypeDocument({
+			invoiceType: options.invoiceType
+				? unref(options.invoiceType)
+				: undefined,
+			posProfile: unref(posProfile),
+			doc: unref(invoiceDoc),
+		});
+
 	const getInvoiceSettlementAmount = () => {
 		const doc = unref(invoiceDoc);
 		if (!doc) return 0;
 
 		if (typeof options.getNetInvoiceAmount === "function") {
 			return flt(options.getNetInvoiceAmount());
+		}
+
+		// Sales Order / Quotation: advance target is grand_total, never rounded.
+		if (isOrderTypeDoc()) {
+			return flt(doc.grand_total);
 		}
 
 		return flt(doc.rounded_total || doc.grand_total);

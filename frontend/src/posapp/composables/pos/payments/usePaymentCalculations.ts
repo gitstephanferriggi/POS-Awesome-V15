@@ -1,12 +1,17 @@
 import { computed, unref, type Ref } from "vue";
 import { formatUtils } from "../../../format";
 import { fromCompanyCurrency } from "../../../utils/erpnextCurrency";
+import { isPosOrderTypeDocument } from "../../../utils/posDocumentMode";
 
 declare const window: any;
 
 export interface PaymentCalculationOptions {
 	invoiceDoc: Ref<any>;
 	posProfile: Ref<any>;
+	// Optional: current POS invoice type ("Invoice" | "Order" | "Quotation" | ...).
+	// When the document is order-type (Sales Order / Quotation) the settlement
+	// target is grand_total and there is no cash change.
+	invoiceType?: Ref<string>;
 	currencyPrecision: Ref<number>;
 	loyaltyAmount: Ref<number>;
 	redeemedCustomerCredit: Ref<number>;
@@ -31,7 +36,17 @@ export function usePaymentCalculations(options: PaymentCalculationOptions) {
 		customerInfo,
 		giftCardRedemptions,
 		formatCurrency,
+		invoiceType,
 	} = options;
+
+	// True for Sales Order / Quotation (deposit/advance workflow): use grand_total
+	// as the payment target and never treat surplus as cash change.
+	const isOrderTypeDoc = () =>
+		isPosOrderTypeDocument({
+			invoiceType: invoiceType ? unref(invoiceType) : undefined,
+			posProfile: unref(posProfile),
+			doc: unref(invoiceDoc),
+		});
 
 	// Local flt helper using global flt or falling back to parseFloat
 	const flt = (val: any, prec?: number): number => {
@@ -135,11 +150,15 @@ export function usePaymentCalculations(options: PaymentCalculationOptions) {
 		const profile = unref(posProfile);
 		if (!doc) return 0;
 
+		const orderType = isOrderTypeDoc();
 		let invoice_total;
 		if (
 			profile.posa_allow_multi_currency &&
 			doc.currency !== profile.currency
 		) {
+			invoice_total = flt(doc.grand_total);
+		} else if (orderType) {
+			// Sales Order / Quotation: advance target is grand_total, never rounded.
 			invoice_total = flt(doc.grand_total);
 		} else {
 			invoice_total = flt(doc.rounded_total || doc.grand_total);
@@ -148,6 +167,9 @@ export function usePaymentCalculations(options: PaymentCalculationOptions) {
 		let diff = flt(invoice_total - total_payments.value);
 		// For returns: negative diff means more refund needed, positive means over-refunded (cap to 0)
 		if (doc.is_return) return diff > 0 ? 0 : diff;
+		// Order-type: surplus is never cash change. Any over-entry stays a positive
+		// "to be paid" of 0 (fully paid) and never flips negative into change.
+		if (orderType) return diff > 0 ? diff : 0;
 		return diff;
 	});
 
@@ -155,6 +177,10 @@ export function usePaymentCalculations(options: PaymentCalculationOptions) {
 		const doc = unref(invoiceDoc);
 		const profile = unref(posProfile);
 		if (!doc) return 0;
+
+		// Order-type (Sales Order / Quotation): deposit/advance workflow has no
+		// cash change. Surplus must never be silently returned as change.
+		if (isOrderTypeDoc()) return 0;
 
 		let invoice_total;
 		if (

@@ -321,6 +321,7 @@ import {
 import { resolvePaymentPrintFormatDoctypes } from "../../utils/paymentPrintDoctype";
 import { resolvePaymentPrintFormat } from "../../utils/paymentPrintFormat";
 import { parseBooleanSetting } from "../../utils/stock";
+import { getPosSettlementTotal } from "../../utils/posDocumentMode";
 import { toCompanyCurrency } from "../../utils/erpnextCurrency";
 import { focusFirstKeyboardTarget } from "../../utils/keyboardNavigation";
 
@@ -450,7 +451,10 @@ const netInvoiceSettlementAmount = computed(() => {
 	if (!invoice_doc.value) return 0;
 
 	const invoiceTotal = flt(
-		invoice_doc.value.rounded_total || invoice_doc.value.grand_total,
+		getPosSettlementTotal(invoice_doc.value, {
+			invoiceType: invoiceType.value,
+			posProfile: pos_profile.value,
+		}),
 		currency_precision.value,
 	);
 	const coveredAmount = flt(
@@ -557,6 +561,7 @@ const { loadPrintPage, printOfflineInvoice } = usePaymentPrinting({
 const paymentCalculations = usePaymentCalculations({
 	invoiceDoc: computed(() => invoiceStore.invoiceDoc),
 	posProfile: pos_profile,
+	invoiceType: invoiceType,
 	currencyPrecision: currency_precision,
 	loyaltyAmount: loyalty_amount,
 	redeemedCustomerCredit: redeemed_customer_credit,
@@ -584,6 +589,7 @@ const {
 } = usePaymentMethods({
 	invoiceDoc: computed(() => invoiceStore.invoiceDoc),
 	posProfile: pos_profile,
+	invoiceType: invoiceType,
 	diffPayment: diff_payment,
 	getNetInvoiceAmount: () => netInvoiceSettlementAmount.value,
 	formatFloat: (val) => flt(val, currency_precision.value),
