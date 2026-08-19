@@ -14,6 +14,11 @@ import {
 } from "../../../services/documentPrint";
 import { isOffline } from "../../../../offline/index";
 import { resolvePaymentPrintDoctype } from "../../../utils/paymentPrintDoctype";
+import {
+	isCarwashTerminalProfile,
+	printCarwashViaTerminal,
+} from "../../../services/carwashTerminalPrint";
+import { useToastStore } from "../../../stores/toastStore";
 
 declare const frappe: any;
 
@@ -94,8 +99,34 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 		win.print();
 	};
 
-	const loadPrintPage = async (input: { doc?: any; doctype?: string; name?: string } = {}) => {
+	const loadPrintPage = async (
+		input: { doc?: any; doctype?: string; name?: string; reprint?: boolean } = {},
+	) => {
 		const { doc, profile, doctype, print_format, letter_head } = resolvePrintContext(input);
+
+		// --- Car Wash register: terminal-side PassPRNT print only ---
+		// Scoped by the POS Profile flag. For any other profile this is skipped
+		// entirely and the normal POS Awesome browser/QZ path below runs unchanged.
+		if (isCarwashTerminalProfile(profile)) {
+			try {
+				await printCarwashViaTerminal({
+					doc,
+					name: input.name || doc?.name,
+					reprint: Boolean(input.reprint),
+				});
+			} catch (error: any) {
+				console.error("Car Wash terminal print failed", error);
+				useToastStore().show({
+					title: "Unable to print on the terminal",
+					color: "error",
+					detail:
+						error?.message ||
+						"Could not hand the receipt to the Star PassPRNT app.",
+				});
+			}
+			// Never fall through to any other print path for the Car Wash register.
+			return;
+		}
 		const debugPrint = isDebugPrintEnabled();
 		const offline = isOffline();
 		const docname = resolveDocumentName(input.name || doc?.name);

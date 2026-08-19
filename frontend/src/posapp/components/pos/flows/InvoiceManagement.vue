@@ -1450,6 +1450,10 @@ import {
 	shouldUseConfiguredQzDocumentPrinting,
 	shouldUseRawDocumentPrinting,
 } from "../../../services/documentPrint";
+import {
+	isCarwashTerminalProfile,
+	printCarwashViaTerminal,
+} from "../../../services/carwashTerminalPrint";
 import { isOffline } from "../../../../offline/index";
 import { buildInvoicePdfUrl, shouldDownloadPdfForShareError } from "../../../utils/invoiceSharing";
 import DocumentSourceSelector from "../shared/DocumentSourceSelector.vue";
@@ -2666,6 +2670,37 @@ export default {
 		async printInvoice(invoice) {
 			const profile = this.posProfile;
 			if (!invoice?.name || !profile) return;
+
+			// --- Car Wash register: terminal-side PassPRNT REPRINT only ---
+			// Scoped by the POS Profile flag. Reuses the exact same terminal flow as
+			// the normal sale print (mint_print -> starpassprnt:// -> PassPRNT ->
+			// TSP100IIILAN), marked as a REPRINT so the served receipt carries the
+			// *** REPRINT *** marker. The invoice name is authoritative; the server
+			// renders from the submitted POS Invoice (browser totals are never
+			// trusted) and enforces Car Wash scope + docstatus==1. For every other profile
+			// this branch is skipped and the original browser/QZ print path below
+			// runs unchanged.
+			if (isCarwashTerminalProfile(profile)) {
+				try {
+					await printCarwashViaTerminal({ name: invoice.name, reprint: true });
+				} catch (error) {
+					console.error("Car Wash terminal reprint failed", error);
+					try {
+						useToastStore().show({
+							title: __("Unable to print on the terminal"),
+							color: "error",
+							detail:
+								error?.message ||
+								__("Could not hand the receipt to the Star PassPRNT app."),
+						});
+					} catch (e) {
+						/* toast unavailable */
+					}
+				}
+				// Never fall through to any other print path for the Car Wash register.
+				return;
+			}
+
 			const doctype = invoice.doctype || this.currentInvoiceDoctype;
 			const printFormat = profile.print_format_for_online || profile.print_format || "Standard";
 			const letterHead = profile.letter_head || 0;

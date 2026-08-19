@@ -227,6 +227,7 @@ import { useInvoiceStore } from "../../../stores/invoiceStore.js";
 import { useItemsStore } from "../../../stores/itemsStore.js";
 import { storeToRefs } from "pinia";
 import { useCustomerDisplayPublisher } from "../../../composables/pos/shared/useCustomerDisplayPublisher";
+import { listenForPassprntResult } from "../../../services/carwashTerminalPrint";
 
 export default {
 	setup() {
@@ -495,6 +496,15 @@ export default {
 		});
 
 		onMounted(() => {
+			// Car Wash register: listen for a print result forwarded by the
+			// lightweight print_return page (opened in a separate tab by PassPRNT's
+			// return intent). Shows a small toast only; never reopens/reloads/
+			// reprints the POS. No-op for other registers (nothing ever posts).
+			try {
+				listenForPassprntResult();
+			} catch (e) {
+				console.warn("PassPRNT result listener failed", e);
+			}
 			document.addEventListener("keydown", handlePosTabFocus, true);
 			if (typeof window !== "undefined" && "ResizeObserver" in window) {
 				mobileDockObserver = new ResizeObserver(() => {
