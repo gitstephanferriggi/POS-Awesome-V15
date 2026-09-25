@@ -169,6 +169,24 @@ export function useNetworkLifecycle(options: UseNetworkLifecycleOptions) {
 			(window as any).serverOnline = true;
 			void options.onConnectivityRecovered?.();
 		});
+
+		// Desk may already be connected before this layout subscribes to realtime.
+		// Probe once on mount instead of waiting for a future connection event.
+		if (!options.isManualOffline()) {
+			options.networkOnline.value = navigator.onLine;
+			options.serverConnecting.value = true;
+			void networkProxy
+				.checkNetworkConnectivity({ forceImmediate: true })
+				.catch((error) => {
+					console.warn(
+						"Initial POS connectivity check failed",
+						error,
+					);
+				})
+				.finally(() => {
+					options.serverConnecting.value = false;
+				});
+		}
 	}
 
 	function stop() {
