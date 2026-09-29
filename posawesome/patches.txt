@@ -28,3 +28,4 @@ posawesome.patches.add_pos_scale_indexes
 posawesome.patches.add_offline_sync_delta_indexes
 posawesome.patches.add_fast_counter_mode_settings
 posawesome.patches.repair_fast_pos_performance_indexes
+posawesome.patches.add_customer_display_adverts

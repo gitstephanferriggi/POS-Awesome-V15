@@ -1,0 +1,27 @@
+{
+  "doctype": "DocType",
+  "name": "POS Customer Display Advert",
+  "module": "POSAwesome",
+  "istable": 1,
+  "editable_grid": 1,
+  "field_order": [
+    "image",
+    "title"
+  ],
+  "fields": [
+    {
+      "fieldname": "image",
+      "fieldtype": "Attach Image",
+      "label": "Advert Image",
+      "reqd": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "title",
+      "fieldtype": "Data",
+      "label": "Description",
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

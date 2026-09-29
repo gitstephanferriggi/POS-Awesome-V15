@@ -21,7 +21,15 @@ export interface CustomerDisplayLineItem {
 	uom: string;
 }
 
+export interface CustomerDisplayAdvert {
+	image: string;
+	title: string;
+}
+
 export interface CustomerDisplaySnapshot {
+	// Optional for snapshots cached by older tills. Unknown state never starts adverts.
+	bill_active?: boolean;
+	adverts?: CustomerDisplayAdvert[];
 	channel_id: string;
 	currency: string;
 	customer_name: string;
@@ -48,7 +56,8 @@ export interface CustomerDisplayTransport {
 }
 
 const canUseSessionStorage = () =>
-	typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+	typeof window !== "undefined" &&
+	typeof window.sessionStorage !== "undefined";
 
 const canUseLocalStorage = () =>
 	typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -170,9 +179,15 @@ export const createCustomerDisplayTransport = (
 
 		if (canUseLocalStorage()) {
 			try {
-				window.localStorage.setItem(storageKey, JSON.stringify(envelope));
+				window.localStorage.setItem(
+					storageKey,
+					JSON.stringify(envelope),
+				);
 			} catch (error) {
-				console.warn("Customer display local cache write failed", error);
+				console.warn(
+					"Customer display local cache write failed",
+					error,
+				);
 			}
 		}
 	};
@@ -213,7 +228,10 @@ export const createCustomerDisplayTransport = (
 
 		return () => {
 			if (channel) {
-				channel.removeEventListener("message", onMessage as EventListener);
+				channel.removeEventListener(
+					"message",
+					onMessage as EventListener,
+				);
 			}
 			if (typeof window !== "undefined") {
 				window.removeEventListener("storage", onStorage);
@@ -233,4 +251,24 @@ export const createCustomerDisplayTransport = (
 		getLastSnapshot,
 		close,
 	};
+};
+
+/** Keep settings compatible with old/offline profiles and reject non-image URL schemes. */
+export const getCustomerDisplayAdverts = (
+	profile: any,
+): CustomerDisplayAdvert[] => {
+	if (
+		!isCustomerDisplayEnabled(profile) ||
+		!parseBooleanSetting(profile?.posa_enable_customer_display_adverts) ||
+		!Array.isArray(profile?.posa_customer_display_adverts)
+	)
+		return [];
+	return profile.posa_customer_display_adverts
+		.slice(0, 10)
+		.flatMap((row: any) => {
+			const image =
+				typeof row?.image === "string" ? row.image.trim() : "";
+			if (!/^(\/(?!\/)|https?:\/\/)/i.test(image)) return [];
+			return [{ image, title: String(row.title || "") }];
+		});
 };

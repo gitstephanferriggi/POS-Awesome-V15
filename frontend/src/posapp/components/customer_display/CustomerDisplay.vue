@@ -1,5 +1,14 @@
 <template>
 	<section class="customer-display-screen">
+		<div v-if="currentAdvert" v-show="imageVisible" class="display-advert">
+			<img
+				:key="currentAdvert.image"
+				:src="currentAdvert.image"
+				:alt="currentAdvert.title || __('Advertisement')"
+				@load="imageLoaded(currentAdvert.image)"
+				@error="imageFailed(currentAdvert.image)"
+			/>
+		</div>
 		<header class="display-header">
 			<div class="display-title-block">
 				<h1>{{ __("Your Cart") }}</h1>
@@ -54,6 +63,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { useCustomerDisplayAdverts } from "../../composables/pos/shared/useCustomerDisplayAdverts";
 import { createCustomerDisplayTransport, type CustomerDisplaySnapshot } from "../../utils/customerDisplay";
 
 declare const __: (_text: string, _args?: any[]) => string;
@@ -83,6 +93,7 @@ const emptySnapshot = (): CustomerDisplaySnapshot => ({
 });
 
 const snapshot = ref<CustomerDisplaySnapshot>(emptySnapshot());
+const { currentAdvert, imageVisible, imageLoaded, imageFailed } = useCustomerDisplayAdverts(snapshot);
 
 let unsubscribe: (() => void) | null = null;
 let transport: ReturnType<typeof createCustomerDisplayTransport> | null = null;
@@ -97,8 +108,8 @@ const syncSubscription = () => {
 		transport = null;
 	}
 
+	snapshot.value = emptySnapshot();
 	if (!channelId.value) {
-		snapshot.value = emptySnapshot();
 		return;
 	}
 
@@ -173,7 +184,21 @@ const formatCurrency = (value: number) => {
 </script>
 
 <style scoped>
+.display-advert {
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	background: #000;
+}
+
+.display-advert img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}
+
 .customer-display-screen {
+	position: relative;
 	height: 100%;
 	display: grid;
 	grid-template-rows: auto 1fr auto;

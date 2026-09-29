@@ -1,16 +1,11 @@
-import {
-	computed,
-	onBeforeUnmount,
-	onMounted,
-	watch,
-	type Ref,
-} from "vue";
+import { computed, onBeforeUnmount, onMounted, watch, type Ref } from "vue";
 import { useInvoiceStore } from "../../../stores/invoiceStore";
 import { useCustomersStore } from "../../../stores/customersStore";
 import {
 	buildCustomerDisplayUrl,
 	createCustomerDisplayTransport,
 	getAutoOpenMarkerKey,
+	getCustomerDisplayAdverts,
 	getOrCreateCustomerDisplayChannelId,
 	isCustomerDisplayEnabled,
 	shouldAutoOpenCustomerDisplay,
@@ -57,9 +52,7 @@ const toLineItem = (item: any, index: number): CustomerDisplayLineItem => {
 			`line_${index + 1}`,
 		item_code: toText(item?.item_code),
 		item_name:
-			toText(item?.item_name) ||
-			toText(item?.item_code) ||
-			__("Item"),
+			toText(item?.item_name) || toText(item?.item_code) || __("Item"),
 		qty,
 		rate,
 		amount,
@@ -94,6 +87,17 @@ export function useCustomerDisplayPublisher({
 	);
 	const autoOpenMarker = computed(() => getAutoOpenMarkerKey(channelId));
 
+	const billActive = computed(() =>
+		Boolean(
+			invoiceStore.items.length ||
+				invoiceStore.invoiceDoc ||
+				invoiceStore.flowContext ||
+				invoiceStore.invoiceToLoad ||
+				invoiceStore.orderToLoad ||
+				invoiceStore.flowToLoad,
+		),
+	);
+
 	let publishTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const buildSnapshot = (): CustomerDisplaySnapshot => {
@@ -118,6 +122,8 @@ export function useCustomerDisplayPublisher({
 
 		return {
 			channel_id: channelId,
+			bill_active: billActive.value,
+			adverts: getCustomerDisplayAdverts(posProfile.value),
 			currency,
 			customer_name,
 			items,
@@ -147,11 +153,24 @@ export function useCustomerDisplayPublisher({
 		}, 80);
 	};
 
+	// Send lifecycle changes without the cart-update debounce, including the first scan.
+	watch(
+		billActive,
+		() => {
+			if (publishTimer) clearTimeout(publishTimer);
+			publishTimer = null;
+			publishSnapshot();
+		},
+		{ flush: "sync" },
+	);
+
 	const openCustomerDisplay = () => {
 		if (!isEnabled.value) {
 			frappe?.show_alert?.(
 				{
-					message: __("Enable Customer Display in POS Profile first."),
+					message: __(
+						"Enable Customer Display in POS Profile first.",
+					),
 					indicator: "orange",
 				},
 				4,
@@ -194,7 +213,8 @@ export function useCustomerDisplayPublisher({
 	};
 
 	const hasAutoOpened = () => {
-		if (typeof window === "undefined" || !window.sessionStorage) return false;
+		if (typeof window === "undefined" || !window.sessionStorage)
+			return false;
 		return window.sessionStorage.getItem(autoOpenMarker.value) === "1";
 	};
 

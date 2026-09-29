@@ -2,6 +2,11 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on("POS Profile", {
+	validate(frm) {
+		if ((frm.doc.posa_customer_display_adverts || []).length > 10) {
+			frappe.throw(__("Customer Display supports a maximum of 10 adverts."));
+		}
+	},
 	setup: function (frm) {
 		const set_field_query = (fieldname, query_factory) => {
 			if (frm.fields_dict[fieldname]) {
