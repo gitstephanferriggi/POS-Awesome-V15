@@ -295,6 +295,17 @@ export function useInvoiceDetails(options: InvoiceDetailsOptions) {
 		const formatted = formatDate(new_delivery_date.value);
 		const doc = unref(invoiceDoc);
 		if (doc) {
+			if (doc.doctype === "Sales Order") {
+				const previous = doc.delivery_date;
+				for (const item of doc.items || []) {
+					const itemDate = item.posa_delivery_date || item.delivery_date;
+					if (!itemDate || itemDate === previous) {
+						item.delivery_date = formatted;
+						item.posa_delivery_date = formatted;
+					}
+				}
+				doc.delivery_date = formatted;
+			}
 			doc.posa_delivery_date = formatted;
 			if (!formatted) {
 				doc.shipping_address_name = null;

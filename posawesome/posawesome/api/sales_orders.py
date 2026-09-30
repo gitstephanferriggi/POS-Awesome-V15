@@ -57,10 +57,12 @@ def _map_delivery_dates(data):
         except Exception:
             return None
 
-    # Map order level delivery date with robust fallback.
+    previous_delivery_date = parse_date(data.get("delivery_date"))
+
+    # The POS picker is authoritative when it supplies a valid date.
     order_delivery_date = (
-        parse_date(data.get("delivery_date"))
-        or parse_date(data.get("posa_delivery_date"))
+        parse_date(data.get("posa_delivery_date"))
+        or previous_delivery_date
         or parse_date(data.get("transaction_date"))
         or parse_date(data.get("posting_date"))
         or str(getdate(nowdate()))
@@ -73,13 +75,15 @@ def _map_delivery_dates(data):
             continue
 
         item_delivery = (
-            parse_date(item.get("delivery_date"))
-            or parse_date(item.get("posa_delivery_date"))
+            parse_date(item.get("posa_delivery_date"))
+            or parse_date(item.get("delivery_date"))
             or order_delivery_date
         )
+        if item_delivery == previous_delivery_date:
+            item_delivery = order_delivery_date
         if item_delivery:
             item["delivery_date"] = item_delivery
-            item.setdefault("posa_delivery_date", item_delivery)
+            item["posa_delivery_date"] = item_delivery
 
 
 @frappe.whitelist()
@@ -155,14 +159,9 @@ def submit_sales_order(order):
     so_doc.save()
     so_doc.submit()
 
+    # Keep the deposit and order in the same request transaction. Any payment
+    # failure rolls back the order; printing begins only after both are saved.
     if payments:
-        frappe.enqueue(
-            "posawesome.posawesome.api.sales_orders._payment_entry_job",
-            queue="short",
-            order_name=so_doc.name,
-            payments=payments,
-        )
-
-    # Payment entries run in the background to speed up checkout
+        _create_payment_entries(so_doc, payments)
 
     return {"name": so_doc.name, "status": so_doc.docstatus}
