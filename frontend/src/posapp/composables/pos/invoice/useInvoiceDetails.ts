@@ -113,32 +113,11 @@ export function useInvoiceDetails(options: InvoiceDetailsOptions) {
 	const credit_due_presets = [7, 14, 30];
 
 	// Formatting helper
-	const formatDate = (date: any) => {
-		if (!date) return null;
-		if (typeof frappe !== "undefined" && frappe.datetime) {
-			const formatted = frappe.datetime.obj_to_str(date);
-			const normalized = normalizeDateForBackend(formatted);
-			if (normalized) {
-				return normalized;
-			}
-		}
-		return normalizeDateForBackend(date);
-	};
+	// Picker strings use dd-MM-yyyy. Passing them through moment/Frappe first
+	// can reinterpret 05-10-2026 as May 10 rather than October 5.
+	const formatDate = (date: any) => normalizeDateForBackend(date);
 
-	const formatDateDisplay = (date: any) => {
-		if (!date) return "";
-		if (typeof frappe !== "undefined" && frappe.datetime) {
-			const formatted = frappe.datetime.obj_to_str(date);
-			const normalized = normalizeDateForBackend(formatted);
-			if (normalized) {
-				return normalized;
-			}
-		}
-		if (date instanceof Date) {
-			return date.toISOString().split("T")[0];
-		}
-		return normalizeDateForBackend(date) || "";
-	};
+	const formatDateDisplay = (date: any) => normalizeDateForBackend(date) || "";
 
 	// --- Address Logic ---
 
