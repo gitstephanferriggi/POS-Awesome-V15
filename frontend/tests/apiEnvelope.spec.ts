@@ -43,6 +43,21 @@ describe("api envelope handling", () => {
 		);
 	});
 
+	it.each(["direct", "xhr"])("preserves validation errors from %s error callbacks", async (shape) => {
+		const payload = {
+			exc_type: "ValidationError",
+			_server_messages: JSON.stringify([JSON.stringify({ message: "Expected Delivery Date should be after Sales Order Date" })]),
+		};
+		(frappe.call as any).mockImplementation(({ error }: any) => {
+			error(shape === "xhr" ? { status: 417, responseJSON: payload } : payload);
+		});
+		const result = await api.callEnvelope("pos.test.validation");
+		expect(result).toMatchObject({ ok: false, error: {
+			code: "BUSINESS_RULE", retryable: false,
+			message: "Expected Delivery Date should be after Sales Order Date",
+		} });
+	});
+
 	it("normalizes transport errors into retryable envelopes", async () => {
 		(frappe.call as any).mockImplementation(({ error }: any) => {
 			error({ status: 503, statusText: "Service Unavailable" });

@@ -253,6 +253,7 @@ function normalizeBusinessFailure<T>(
 		extractServerMessage(message) ||
 		rawError.message ||
 		message?.message ||
+		response?.exception ||
 		response?.exc ||
 		"Request failed";
 	const resolvedMessage = normalizeMessage(serverMessage, "Request failed");
@@ -271,6 +272,10 @@ function normalizeTransportFailure<T>(
 	error: any,
 	requestId: string,
 ): ApiEnvelope<T> {
+	const payload = error?.responseJSON || error?.xhr?.responseJSON || error;
+	if (payload?.exc_type === "ValidationError" || extractServerMessage(payload)) {
+		return normalizeBusinessFailure<T>(payload, requestId);
+	}
 	const status =
 		Number(error?.status || error?.httpStatus || error?.xhr?.status || 0) ||
 		null;
