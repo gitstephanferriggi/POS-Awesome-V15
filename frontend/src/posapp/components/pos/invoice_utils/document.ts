@@ -162,6 +162,7 @@ export function get_invoice_doc(context: any) {
 	doc.ignore_pricing_rule = 0;
 	doc.company = doc.company || context.pos_profile?.company || null;
 	doc.pos_profile = doc.pos_profile || context.pos_profile?.name || null;
+	doc.taxes_and_charges = doc.taxes_and_charges || context.pos_profile?.taxes_and_charges || null;
 	doc.posa_show_custom_name_marker_on_print =
 		context.pos_profile?.posa_show_custom_name_marker_on_print ?? null;
 
@@ -513,6 +514,7 @@ export function get_invoice_items(context: any) {
 		);
 		const new_item = {
 			item_code: item.item_code,
+			warehouse: item.warehouse || context.pos_profile?.warehouse || null,
 			// Retain the item name for offline invoices
 			// Fallback to item_code if item_name is not available
 			item_name: item.item_name || item.item_code,
@@ -629,6 +631,7 @@ export function get_order_items(context: any) {
 	context.items.forEach((item) => {
 		const new_item = {
 			item_code: item.item_code,
+			warehouse: item.warehouse || context.pos_profile?.warehouse || null,
 			// Retain item name to show on offline order documents
 			// Use item_code if item_name is missing
 			item_name: item.item_name || item.item_code,

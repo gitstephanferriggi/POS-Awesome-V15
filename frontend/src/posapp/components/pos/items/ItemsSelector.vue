@@ -1,5 +1,6 @@
 <template>
 	<div class="items-selector-shell" :style="responsiveStyles">
+		<FulfilmentLocation ref="fulfilmentPicker" :pos-profile="pos_profile" />
 		<ScanErrorDialog
 			v-model="scanErrorDialog"
 			:message="scanErrorMessage"
@@ -26,6 +27,7 @@
 			<!-- Add dynamic-padding wrapper like Invoice component -->
 			<div class="dynamic-padding">
 				<v-card flat class="selector-section-card selector-header-card pos-themed-card">
+					<LocationStockLookup v-if="context === 'pos'" :pos-profile="pos_profile" />
 					<ItemHeader
 						v-model:search-input="search_input"
 						v-model:qty-input="debounce_qty"
@@ -211,6 +213,8 @@ import {
 import { storeToRefs } from "pinia";
 import * as _ from "lodash";
 
+import FulfilmentLocation from "./FulfilmentLocation.vue";
+import LocationStockLookup from "./LocationStockLookup.vue";
 import CameraScanner from "./CameraScanner.vue";
 import ItemActionToolbar from "./ItemActionToolbar.vue";
 import ItemSettingsDialog from "./ItemSettingsDialog.vue";
@@ -638,6 +642,7 @@ const itemSelectorLayoutLifecycle = useItemsSelectorLayoutLifecycle({
 });
 
 // 5. Core Methods
+const fulfilmentPicker = ref<any>(null);
 const add_item = async (item, optionsOrQty: any = {}) => {
 	if (props.context === "pos") {
 		let options: any = typeof optionsOrQty === "object" ? optionsOrQty : { qty: optionsOrQty };
@@ -662,7 +667,16 @@ const add_item = async (item, optionsOrQty: any = {}) => {
 			return;
 		}
 
+		if (invoiceStore.invoiceType === "Order" && !isReturnInvoice.value && item.is_stock_item) {
+			const selected = await fulfilmentPicker.value.choose(item, requestedQty);
+			if (!selected) return;
+			item.warehouse = selected.warehouse;
+			item.actual_qty = selected.available_qty;
+			item.available_qty = selected.available_qty;
+		}
+
 		const context = {
+			invoiceType: invoiceStore.invoiceType,
 			pos_profile: pos_profile.value,
 			stock_settings: stock_settings.value,
 			customer: selectedCustomer.value,

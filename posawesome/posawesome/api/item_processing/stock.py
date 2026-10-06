@@ -16,6 +16,14 @@ def get_stock_availability(item_code, warehouse):
     if not warehouse:
         return 0.0
 
+    if "jysk_malta" in frappe.get_installed_apps():
+        from jysk_malta.api.stock import get_availability
+        warehouses = [warehouse]
+        if frappe.db.get_value("Warehouse", warehouse, "is_group"):
+            warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
+        return sum(row["available_qty"] for row in get_availability(item_code=item_code)
+                   if row["warehouse"] in warehouses)
+
     warehouses = [warehouse]
     if frappe.db.get_value("Warehouse", warehouse, "is_group"):
         # Include all child warehouses when a group warehouse is set
@@ -46,6 +54,13 @@ def get_bulk_stock_availability(items):
     """
     if not items:
         return {}
+
+    if "jysk_malta" in frappe.get_installed_apps():
+        return {(d["item_code"], d["warehouse"], cstr(d.get("batch_no"))):
+                min(get_stock_availability(d["item_code"], d["warehouse"]),
+                    flt(get_batch_qty(d["batch_no"], d["warehouse"]))) if d.get("batch_no")
+                else get_stock_availability(d["item_code"], d["warehouse"])
+                for d in items if d.get("item_code") and d.get("warehouse")}
 
     # Separate items
     regular_items_map = {}  # (warehouse) -> set(item_code)
@@ -137,7 +152,7 @@ def get_available_qty(items):
             continue
 
         if batch_no:
-            available_qty = get_batch_qty(batch_no, warehouse) or 0
+            available_qty = min(get_batch_qty(batch_no, warehouse) or 0, get_stock_availability(item_code, warehouse))
         else:
             available_qty = get_stock_availability(item_code, warehouse)
 

@@ -351,6 +351,7 @@ export function useItemAddition() {
 	const addItem = withPerf(
 		"pos:add-item",
 		async function addItemMeasured(item, context) {
+			item.warehouse = item.warehouse || context.pos_profile?.warehouse;
 			const currentInvoiceType =
 				typeof context?.invoiceType === "string"
 					? context.invoiceType

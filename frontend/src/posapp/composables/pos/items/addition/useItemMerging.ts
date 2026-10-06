@@ -10,9 +10,9 @@ export function useItemMerging() {
 		!entry.posa_is_replace &&
 		Number.parseFloat(entry.qty) !== 0;
 
-	const buildMergeKey = (entry: MergeEntry, requireBatch: boolean) => {
+	const buildMergeKey = (entry: MergeEntry, requireBatch: boolean, defaultWarehouse = "") => {
 		const batchPart = requireBatch ? entry?.batch_no || "" : "";
-		return `${entry?.item_code || ""}::${entry?.uom || ""}::${batchPart}`;
+		return `${entry?.item_code || ""}::${entry?.uom || ""}::${entry?.warehouse || defaultWarehouse}::${batchPart}`;
 	};
 
 	const getStoreOrder = (context: MergeContext) => {
@@ -69,12 +69,12 @@ export function useItemMerging() {
 						: entryOrRowId;
 				if (!shouldIndexItem(entry)) return;
 
-				const flexKey = buildMergeKey(entry, false);
+				const flexKey = buildMergeKey(entry, false, context?.pos_profile?.warehouse || "");
 				if (!cache.flexBatch.has(flexKey)) {
 					cache.flexBatch.set(flexKey, { item: entry, index });
 				}
 
-				const strictKey = buildMergeKey(entry, true);
+				const strictKey = buildMergeKey(entry, true, context?.pos_profile?.warehouse || "");
 				if (!cache.strictBatch.has(strictKey)) {
 					cache.strictBatch.set(strictKey, { item: entry, index });
 				}
@@ -92,10 +92,10 @@ export function useItemMerging() {
 		requireBatchMatch: boolean,
 	) => {
 		const cache = ensureMergeCache(context);
-		const key = buildMergeKey(item, requireBatchMatch);
+		const key = buildMergeKey(item, requireBatchMatch, context?.pos_profile?.warehouse || "");
 		const bucket = requireBatchMatch ? cache.strictBatch : cache.flexBatch;
 		const hit = bucket.get(key);
-		if (hit && shouldIndexItem(hit.item)) {
+		if (hit && (hit.item.warehouse || context?.pos_profile?.warehouse) === (item.warehouse || context?.pos_profile?.warehouse) && shouldIndexItem(hit.item)) {
 			return hit;
 		}
 		return null;
@@ -125,17 +125,17 @@ export function useItemMerging() {
 		}
 
 		if (shouldIndexItem(entry)) {
-			cache.flexBatch.set(buildMergeKey(entry, false), {
+			cache.flexBatch.set(buildMergeKey(entry, false, context?.pos_profile?.warehouse || ""), {
 				item: entry,
 				index,
 			});
-			cache.strictBatch.set(buildMergeKey(entry, true), {
+			cache.strictBatch.set(buildMergeKey(entry, true, context?.pos_profile?.warehouse || ""), {
 				item: entry,
 				index,
 			});
 		} else {
-			cache.flexBatch.delete(buildMergeKey(entry, false));
-			cache.strictBatch.delete(buildMergeKey(entry, true));
+			cache.flexBatch.delete(buildMergeKey(entry, false, context?.pos_profile?.warehouse || ""));
+			cache.strictBatch.delete(buildMergeKey(entry, true, context?.pos_profile?.warehouse || ""));
 		}
 
 		cache.signature = itemsRef.length;
@@ -206,6 +206,7 @@ export function useItemMerging() {
 			(item) =>
 				item.item_code === newItem.item_code &&
 				item.uom === newItem.uom &&
+				(item.warehouse || context?.pos_profile?.warehouse) === (newItem.warehouse || context?.pos_profile?.warehouse) &&
 				item.rate === newItem.rate,
 		);
 		if (match) {

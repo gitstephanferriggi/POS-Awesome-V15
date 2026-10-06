@@ -246,6 +246,9 @@
 								disabled
 								prepend-inner-icon="mdi-warehouse"
 							></v-text-field>
+							<FulfilmentLocation v-if="invoiceType === 'Order'" :item="item" :pos-profile="pos_profile"
+								@selected="location => { item.warehouse = location.warehouse; item.actual_qty = location.available_qty; item.available_qty = location.available_qty; }" />
+
 						</div>
 						<div class="posa-form-field">
 							<v-text-field
@@ -428,6 +431,7 @@
 </template>
 
 <script setup lang="ts">
+import FulfilmentLocation from "../items/FulfilmentLocation.vue";
 import { getDisplayableBatchOptions } from "../../../composables/pos/shared/useBatchSerial";
 import type { CartItem, POSProfile, InvoiceDoc } from "../../../types/models";
 

@@ -159,7 +159,7 @@ def get_item_detail(item, doc=None, warehouse=None, price_list=None, company=Non
     )
     if item.get("is_stock_item") and warehouse:
         if item.get("has_batch_no"):
-            res["actual_qty"] = non_expired_batch_qty
+            res["actual_qty"] = min(non_expired_batch_qty, get_stock_availability(item_code, warehouse))
         else:
             res["actual_qty"] = get_stock_availability(item_code, warehouse)
     res["max_discount"] = max_discount

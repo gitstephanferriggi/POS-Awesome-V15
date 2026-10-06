@@ -137,6 +137,11 @@ def _fetch_bin_qty(warehouse: str, item_codes: Tuple[str, ...]):
     if not item_codes or not warehouse:
         return []
 
+    if "jysk_malta" in frappe.get_installed_apps():
+        from posawesome.posawesome.api.item_processing.stock import get_bulk_stock_availability
+        values = get_bulk_stock_availability([{"item_code": code, "warehouse": warehouse} for code in item_codes])
+        return [frappe._dict(item_code=code, actual_qty=values.get((code, warehouse, ""), 0)) for code in item_codes]
+
     if frappe.db.get_value("Warehouse", warehouse, "is_group"):
         warehouses = frappe.db.get_descendants("Warehouse", warehouse) or []
         if not warehouses:
@@ -160,6 +165,9 @@ def _fetch_bin_qty(warehouse: str, item_codes: Tuple[str, ...]):
 
 def get_bin_qty(warehouse: Optional[str], item_codes: Sequence[str], ttl: Optional[int] = None):
     """Return cached Bin quantities when a warehouse and codes are provided."""
+
+    if "jysk_malta" in frappe.get_installed_apps():
+        return _fetch_bin_qty(warehouse, tuple(item_codes))
 
     cached = _cache_wrapper(_bin_cache, ttl, _fetch_bin_qty)
     return cached(warehouse, tuple(item_codes))
@@ -533,7 +541,7 @@ def merge_item_row(
     batch_rows = lookup_data.batch_map.get(item_code, [])
     actual_qty = lookup_data.stock_map.get(item_code, 0) or 0
     if meta.get("has_batch_no") and batch_rows:
-        actual_qty = sum(flt(batch.get("batch_qty")) for batch in batch_rows if not batch.get("is_expired"))
+        actual_qty = min(actual_qty, sum(flt(batch.get("batch_qty")) for batch in batch_rows if not batch.get("is_expired")))
 
     row = dict(item)
     row.update(

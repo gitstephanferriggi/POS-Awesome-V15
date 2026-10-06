@@ -211,7 +211,9 @@ export function useItemDetailFetcher() {
 				ctx.active_price_list,
 				itemCodes,
 			);
-			const missingCodes = new Set(cacheResult?.missing || []);
+			// Online availability must be refreshed: reservations can change without
+		// a Bin update, so cached physical quantities are not authoritative.
+		const missingCodes = new Set(isOffline() ? (cacheResult?.missing || []) : itemCodes);
 			const updates: Array<{ item: any; upd: any }> = [];
 
 			cacheResult.cached.forEach((det: any) => {
@@ -349,7 +351,9 @@ export function useItemDetailFetcher() {
 			itemCodes,
 			forceRefresh ? 0 : undefined,
 		);
-		const missingCodes = new Set(cacheResult?.missing || []);
+		// Online availability must be refreshed: reservations can change without
+		// a Bin update, so cached physical quantities are not authoritative.
+		const missingCodes = new Set(isOffline() ? (cacheResult?.missing || []) : itemCodes);
 
 		const itemMap = new Map<any, any>(
 			items.map((it) => [it.item_code, it]),
@@ -406,7 +410,7 @@ export function useItemDetailFetcher() {
 			}
 		});
 
-		let allCached = cacheResult.missing.length === 0;
+		let allCached = isOffline() && cacheResult.missing.length === 0;
 		items.forEach((item) => {
 			const localQty = getLocalStock(item.item_code);
 			if (localQty !== null) {
@@ -478,7 +482,7 @@ export function useItemDetailFetcher() {
 			const details = await fetchItemDetails(
 				itemsToFetch,
 				effectivePriceList,
-				{ bypassRequestCache: forceRefresh },
+				{ bypassRequestCache: forceRefresh || !isOffline() },
 			);
 			if (details && details.length) {
 				itemDetailsRetryCount.value = 0;
