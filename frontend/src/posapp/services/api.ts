@@ -105,7 +105,7 @@ function getServerTime(response: any): string | null {
 	);
 }
 
-function extractServerMessage(payload: any): string | null {
+export function extractServerMessage(payload: any): string | null {
 	const serverMessages =
 		payload?._server_messages || payload?.server_messages;
 	if (!serverMessages) {

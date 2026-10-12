@@ -125,4 +125,18 @@ describe("usePosShift closing warnings", () => {
 		expect(invoiceStore.additionalDiscount).toBe(0);
 		expect(offlineState.clearOpeningStorage).toHaveBeenCalled();
 	});
+	it.each(["rejected", "empty"])("preserves opening and cart on %s submit", async mode => {
+		const ui = useUIStore(), invoice = useInvoiceStore();
+		ui.posOpeningShift = { name: "OPEN-FAIL" };
+		invoice.setAdditionalDiscount(12);
+		offlineState.openingStorage = { pos_opening_shift: { name: "OPEN-FAIL" } };
+		(globalThis as any).frappe.call = vi.fn(() => mode === "rejected"
+			? Promise.reject(new Error("network")) : Promise.resolve({ message: null }));
+		const shift = usePosShift();
+		await expect(shift.submit_closing_pos({})).rejects.toThrow();
+		expect(ui.posOpeningShift.name).toBe("OPEN-FAIL");
+		expect(invoice.additionalDiscount).toBe(12);
+		expect(offlineState.clearOpeningStorage).not.toHaveBeenCalled();
+	});
+
 });

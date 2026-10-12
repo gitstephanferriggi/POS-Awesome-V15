@@ -15,9 +15,62 @@ class CustomPOSInvoiceMergeLog(ERPNextPOSInvoiceMergeLog):
         invoice = super().merge_pos_invoice_into(invoice, data)
 
         if getattr(invoice, "is_return", 0):
+            self._preserve_return_rounding(invoice, data)
             self._normalize_return_payments(invoice)
 
         return invoice
+
+    def _preserve_return_rounding(self, invoice, data) -> None:
+        """Carry source totals through ERPNext's net-price consolidation.
+
+        Tax-inclusive POS rows can lose a minor currency unit when their net
+        amounts and taxes are rounded separately. ERPNext recalculates the
+        consolidated total on save; preserve that difference as rounding, not
+        by reducing the recorded refund or changing tax amounts.
+        """
+        if not data:
+            return
+        # The source invoices already have explicit rounded totals. Preserve
+        # those even if the profile now disables rounding for new sales.
+        if any(not doc.rounded_total for doc in data):
+            return
+
+        precision = invoice.precision("rounding_adjustment")
+        if precision is None:
+            precision = 2
+        base_precision = invoice.precision("base_rounding_adjustment")
+        if base_precision is None:
+            base_precision = 2
+
+        target = flt(sum(flt(doc.rounded_total) for doc in data), precision)
+        base_target = flt(sum(flt(doc.base_rounded_total) for doc in data), base_precision)
+        total = sum(flt(row.net_amount) for row in invoice.get("items")) + sum(
+            flt(row.tax_amount) for row in invoice.get("taxes")
+        )
+        base_total = sum(flt(row.base_net_amount) for row in invoice.get("items")) + sum(
+            flt(row.base_tax_amount) for row in invoice.get("taxes")
+        )
+        adjustment = flt(target - total, precision)
+        base_adjustment = flt(base_target - base_total, base_precision)
+        original_adjustment = sum(flt(doc.rounding_adjustment) for doc in data)
+        original_base_adjustment = sum(flt(doc.base_rounding_adjustment) for doc in data)
+
+        # Only recognise minor rounding drift, never an arbitrary imbalance.
+        if abs(flt(adjustment - original_adjustment, precision)) > len(data) * 10 ** -precision:
+            return
+        if abs(flt(base_adjustment - original_base_adjustment, base_precision)) > len(data) * max(
+            10 ** -base_precision, abs(flt(invoice.conversion_rate) or 1) * 10 ** -precision
+        ):
+            return
+        if not adjustment:
+            return
+
+        # ERPNext preserves these fields for consolidated documents when the
+        # rounding adjustment is non-zero, including during validate_pos().
+        invoice.rounded_total = target
+        invoice.base_rounded_total = base_target
+        invoice.rounding_adjustment = adjustment
+        invoice.base_rounding_adjustment = base_adjustment
 
     def _normalize_return_payments(self, invoice) -> None:
         """Clamp aggregated payment totals for consolidated return invoices."""

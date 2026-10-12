@@ -47,12 +47,14 @@
 				</v-container>
 			</v-card-text>
 
+			<v-alert v-if="submissionError" type="error" class="mx-6 mb-4" role="alert">{{ __(submissionError) }}</v-alert>
 			<v-divider></v-divider>
 			<v-card-actions class="dialog-actions-container">
 				<v-spacer></v-spacer>
 				<v-btn
 					theme="dark"
 					@click="closeDialog"
+					:disabled="submitting"
 					class="pos-action-btn cancel-action-btn"
 					size="large"
 					elevation="2"
@@ -63,6 +65,8 @@
 				<v-btn
 					theme="dark"
 					@click="submitDialog"
+					:loading="submitting"
+					:disabled="submitting"
 					class="pos-action-btn submit-action-btn"
 					size="large"
 					elevation="2"
@@ -93,7 +97,10 @@ export default {
 		ShiftOverview,
 		PaymentReconciliation,
 	},
-	setup() {
+	props: {
+		submitClosing: { type: Function, required: true },
+	},
+	setup(props) {
 		const uiStore = useUIStore();
 		const eventBus = inject("eventBus");
 		const __ = window.__ || ((t) => t);
@@ -108,7 +115,9 @@ export default {
 			closeDialog,
 			fetchOverview,
 			submitDialog,
-		} = useClosingShift(eventBus);
+			submitting,
+			submissionError,
+		} = useClosingShift(eventBus, (data) => props.submitClosing(data));
 
 		const { formatCurrency, formatFloat, currencySymbol } = useFormat();
 		const translate = (t) => window.__(t);
@@ -226,6 +235,8 @@ export default {
 			closeDialog,
 			fetchOverview,
 			submitDialog,
+			submitting,
+			submissionError,
 			...summary,
 			// Expose formatters used in template
 			formatCurrency,

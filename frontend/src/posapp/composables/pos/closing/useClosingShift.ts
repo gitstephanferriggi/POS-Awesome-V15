@@ -1,15 +1,20 @@
+import { closingFailureMessage } from "../../../utils/closingFailure";
 import { ref } from "vue";
 
 declare const frappe: any;
 
-export function useClosingShift(eventBus: any) {
+export function useClosingShift(eventBus: any, submitClosing?: (data: any) => Promise<unknown>) {
 	const closingDialog = ref(false);
+	const submitting = ref(false);
+	const submissionError = ref("");
 	const dialog_data = ref<any>({});
 	const overview = ref<any>(null);
 	const overviewLoading = ref(false);
 	const pos_profile = ref("");
 
 	const closeDialog = () => {
+		if (submitting.value) return;
+		submissionError.value = "";
 		closingDialog.value = false;
 		overview.value = null;
 		overviewLoading.value = false;
@@ -265,25 +270,33 @@ export function useClosingShift(eventBus: any) {
 		}
 	};
 
-	const submitDialog = () => {
-		const payments =
-			dialog_data.value.payment_reconciliation ||
-			dialog_data.value.payments ||
-			[];
-		const invalid = payments.some((p: any) =>
-			isNaN(parseFloat(p.closing_amount)),
-		);
-		if (invalid) {
+	const submitDialog = async () => {
+		if (submitting.value) return false;
+		submissionError.value = "";
+		const payments = dialog_data.value.payment_reconciliation || dialog_data.value.payments || [];
+		if (payments.some((p: any) => p.closing_amount === "" || p.closing_amount == null || !Number.isFinite(Number(p.closing_amount)))) {
+			submissionError.value = "Enter a valid closing amount for every payment method.";
 			return false;
 		}
-		if (eventBus) {
-			eventBus.emit("submit_closing_pos", dialog_data.value);
+		submitting.value = true;
+		try {
+			if (!submitClosing) throw new Error("Shift closing is unavailable. Reopen POS and try again.");
+			const result = await submitClosing(dialog_data.value);
+			if (!result) throw new Error("The server did not confirm that the shift closed. Please check and try again.");
+			closingDialog.value = false;
+			return true;
+		} catch (error) {
+			console.error("Failed to submit closing shift", error);
+			submissionError.value = closingFailureMessage(error);
+			return false;
+		} finally {
+			submitting.value = false;
 		}
-		closingDialog.value = false;
-		return true;
 	};
 
 	return {
+		submitting,
+		submissionError,
 		closingDialog,
 		dialog_data,
 		overview,

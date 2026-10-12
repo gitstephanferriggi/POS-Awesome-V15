@@ -3,7 +3,7 @@
 		<AppLoadingOverlay :visible="globalLoading" />
 		<UpdatePrompt />
 		<v-main class="main-content">
-			<ClosingDialog />
+			<ClosingDialog :submit-closing="submit_closing_pos" />
 			<Navbar
 				:pos-profile="posProfile"
 				:pending-invoices="pendingInvoicesCount"
@@ -210,7 +210,7 @@ const loadingApi = (() => {
 const globalLoading = loadingApi?.overlayVisible || ref(false);
 const getScopeState =
 	typeof loadingApi?.getScopeState === "function" ? loadingApi.getScopeState : createFallbackLoadingScope;
-const { get_closing_data } = usePosShift();
+const { get_closing_data, submit_closing_pos } = usePosShift();
 const syncStore = useSyncStore();
 const customersStore = useCustomersStore();
 const itemsStore = useItemsStore();

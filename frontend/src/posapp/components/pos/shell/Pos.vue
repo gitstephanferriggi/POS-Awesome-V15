@@ -243,6 +243,15 @@ export default {
 		});
 		const offers = useOffers();
 		const uiStore = useUIStore();
+		// Closing is submitted by the global layout, including from the main menu.
+		// Refresh this mounted selling screen when the shared opening is cleared.
+		watch(() => uiStore.posOpeningShift, (current, previous) => {
+			if (previous && !current) {
+				shift.pos_profile.value = null;
+				shift.pos_opening_shift.value = null;
+				dialog.value = true;
+			}
+		});
 		const invoiceStore = useInvoiceStore();
 		const itemsStore = useItemsStore();
 		const __ = window.__;
@@ -512,9 +521,6 @@ export default {
 				});
 			}
 			if (eventBus) {
-				eventBus.on("submit_closing_pos", (data) => {
-					shift.submit_closing_pos(data);
-				});
 				eventBus.on("focus_additional_discount", focusAdditionalDiscountField);
 				eventBus.on("set_compact_panel", setCompactPanel);
 			}
@@ -533,7 +539,6 @@ export default {
 				mobileDockObserver = null;
 			}
 			if (eventBus) {
-				eventBus.off("submit_closing_pos");
 				eventBus.off("focus_additional_discount", focusAdditionalDiscountField);
 				eventBus.off("set_compact_panel", setCompactPanel);
 			}

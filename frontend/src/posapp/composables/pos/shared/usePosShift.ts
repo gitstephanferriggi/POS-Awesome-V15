@@ -219,8 +219,8 @@ export function usePosShift(openDialog?: () => void) {
 	}
 
 	function submit_closing_pos(data: any) {
-		console.log("Submitting closing shift", data);
-		frappe
+		// Return completion to the global closing dialog; do not hide failures.
+		return frappe
 			.call(
 				"posawesome.posawesome.doctype.pos_closing_shift.pos_closing_shift.submit_closing_shift",
 				{
@@ -228,7 +228,9 @@ export function usePosShift(openDialog?: () => void) {
 				},
 			)
 			.then((r: any) => {
-				console.log("Submit result", r);
+				if (!r?.message) {
+					throw new Error(translateMessage("The server did not confirm that the shift closed. Please check and try again."));
+				}
 				if (r.message) {
 					pos_profile.value = null;
 					pos_opening_shift.value = null;
@@ -241,9 +243,7 @@ export function usePosShift(openDialog?: () => void) {
 					});
 					check_opening_entry();
 				}
-			})
-			.catch((err: unknown) => {
-				console.error("Failed to submit closing shift", err);
+				return r.message;
 			});
 	}
 
