@@ -42,6 +42,26 @@ export const useBoltOrdersStore = defineStore("boltOrders", () => {
 		error = ref("");
 	const reportedStatus = ref("unknown"),
 		storeActionState = ref("");
+	const storeAction = ref(""), storeActionAt = ref(""), storeStatusAt = ref("");
+	const availability = computed(() => {
+		if (error.value) return "unknown";
+		if (storeActionState.value === "Sending") return "pending";
+		if (storeActionState.value === "Review") return "unconfirmed";
+		const reported = reportedStatus.value === "active" ? "open" : reportedStatus.value === "inactive" ? "pause" : "unknown";
+		if (storeActionState.value === "Confirmed" && ["open", "pause"].includes(storeAction.value)
+			&& (reported === "unknown" || (storeActionAt.value && storeStatusAt.value && storeActionAt.value > storeStatusAt.value))) return storeAction.value;
+		return reported;
+	});
+	const statusBanner = computed(() => {
+		switch (availability.value) {
+			case "open": return { type: "success" as const, title: "Accepting new Bolt orders", text: "The latest confirmed store setting is open." };
+			case "pause": return { type: "warning" as const, title: "New Bolt orders paused", text: "Continue preparing orders already received." };
+			case "pending": return { type: "info" as const, title: "Updating Bolt store status…", text: "Waiting for Bolt to confirm. Please do not retry." };
+			case "unconfirmed": return { type: "warning" as const, title: "Store change not confirmed", text: "Check the store in Bolt before trying again. Ask a manager to review." };
+			default: return { type: "info" as const, title: "Bolt store status unavailable", text: "No current confirmed status is available. Refresh or check the store in Bolt." };
+		}
+	});
+	const storeControlsBlocked = computed(() => busy.value || !!error.value || ["pending", "unconfirmed"].includes(availability.value));
 	const canReject = ref(false),
 		user = ref(""),
 		overflow = ref(false),
@@ -66,9 +86,15 @@ export const useBoltOrdersStore = defineStore("boltOrders", () => {
 				recent?: BoltOrder[];
 				review_events?: number;
 				store_status?: string;
+				store_action?: string;
+				store_action_at?: string;
+				store_status_at?: string;
 				store_action_state?: string;
 			}>(PREFIX + "queue", { profile });
 			if (requestGeneration !== generation) return;
+			storeAction.value = data.store_action || "";
+			storeActionAt.value = data.store_action_at || "";
+			storeStatusAt.value = data.store_status_at || "";
 			reportedStatus.value = data.store_status || "unknown";
 			storeActionState.value = data.store_action_state || "";
 			enabled.value = data.enabled;
@@ -93,6 +119,9 @@ export const useBoltOrdersStore = defineStore("boltOrders", () => {
 	function start(profile: string) {
 		stop();
 		currentProfile = profile;
+		reportedStatus.value = "unknown";
+		storeActionState.value = "";
+		storeAction.value = storeActionAt.value = storeStatusAt.value = "";
 		orders.value = [];
 		recent.value = [];
 		reviewEvents.value = 0;
@@ -158,6 +187,9 @@ export const useBoltOrdersStore = defineStore("boltOrders", () => {
 	return {
 		enabled,
 		command,
+		availability,
+		statusBanner,
+		storeControlsBlocked,
 		reportedStatus,
 		storeActionState,
 		orders,

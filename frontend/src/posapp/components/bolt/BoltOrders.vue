@@ -12,20 +12,22 @@
 			>Bolt operations are not enabled for this terminal, or access has not been configured.</v-alert
 		>
 		<template v-else>
+			<v-alert :type="store.statusBanner.type" variant="tonal" class="mb-4" role="status" aria-live="polite">
+				<strong>{{ store.statusBanner.title }}</strong>
+				<div>{{ store.statusBanner.text }}</div>
+			</v-alert>
 			<div class="actions">
-				<strong>Store status reported by Bolt: {{ store.reportedStatus }}</strong>
-				<span v-if="store.storeActionState">Last store request: {{ store.storeActionState }}</span>
 				<v-btn
 					v-if="store.canReject"
-					:disabled="store.busy"
-					color="success"
+					:disabled="store.storeControlsBlocked || store.availability === 'open'"
+					:color="store.availability === 'open' ? 'grey' : 'success'"
 					@click="storeChoice = 'open'"
 					>Accept new orders</v-btn
 				>
 				<v-btn
 					v-if="store.canReject"
-					:disabled="store.busy"
-					color="warning"
+					:disabled="store.storeControlsBlocked || store.availability === 'pause'"
+					:color="store.availability === 'pause' ? 'grey' : 'warning'"
 					@click="storeChoice = 'pause'"
 					>Pause new orders</v-btn
 				>
@@ -221,8 +223,9 @@
 						>
 					</div>
 					<p class="footnote">
-						Payment is collected by Bolt. No cash payment is added to this till. Handover posts
-						stock and the sale; resolve any ERP error before releasing the goods.
+						Payment is collected by Bolt. Handover records the sale under your open shift with the
+						separate Bolt Food payment method. POS invoices are consolidated at closing.
+						Resolve any ERP error before releasing the goods.
 					</p>
 				</article>
 				<article v-else class="order-detail empty">Choose an order to begin.</article>

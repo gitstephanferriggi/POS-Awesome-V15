@@ -99,3 +99,26 @@ describe("Bolt shared queue", () => {
 		store.stop();
 	});
 });
+
+describe("Bolt store availability", () => {
+ it.each([
+  [{ store_action: "open", store_action_state: "Confirmed" }, "open"],
+  [{ store_action: "pause", store_action_state: "Confirmed" }, "pause"],
+  [{ store_status: "active", store_action_state: "Sending" }, "pending"],
+  [{ store_status: "active", store_action_state: "Review" }, "unconfirmed"],
+  [{ store_status: "inactive", store_action: "open", store_action_state: "Confirmed", store_action_at: "2026-10-14 12:00:00", store_status_at: "2026-10-14 11:00:00" }, "open"],
+  [{ store_status: "inactive", store_action: "open", store_action_state: "Confirmed", store_action_at: "2026-10-14 11:00:00", store_status_at: "2026-10-14 12:00:00" }, "pause"],
+  [{}, "unknown"],
+ ])("resolves confirmed and pending state %j", async (fields, expected) => {
+  vi.mocked(api.call).mockResolvedValue({enabled:true, orders:[], ...fields});
+  const store=useBoltOrdersStore();store.start("Bolt");await flush();
+  expect(store.availability).toBe(expected);
+  expect(store.storeControlsBlocked).toBe(["pending","unconfirmed"].includes(expected));
+  store.stop();
+ });
+ it("does not show a stale green banner after a connection failure", async () => {
+  vi.mocked(api.call).mockResolvedValueOnce({enabled:true, orders:[], store_status:"active"}).mockRejectedValueOnce(new Error("Offline"));
+  const store=useBoltOrdersStore();store.start("Bolt");await flush();await store.refresh();
+  expect(store.availability).toBe("unknown");expect(store.storeControlsBlocked).toBe(true);store.stop();
+ });
+});
