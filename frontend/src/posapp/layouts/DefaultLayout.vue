@@ -72,6 +72,7 @@
 					</v-btn>
 				</template>
 			</v-snackbar>
+			<BoltOrderAlerts />
 			<div class="page-content">
 				<!-- Replaced router-view with slot for layout usage -->
 				<slot />
@@ -83,6 +84,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, getCurrentInstance } from "vue";
 // Note paths updated to be relative to layouts/ directory
+import BoltOrderAlerts from "../components/bolt/BoltOrderAlerts.vue";
 import Navbar from "../components/Navbar.vue";
 import ClosingDialog from "../components/pos/shell/ClosingDialog.vue";
 import AppLoadingOverlay from "../components/ui/LoadingOverlay.vue";

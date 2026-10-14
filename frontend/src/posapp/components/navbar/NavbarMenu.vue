@@ -307,6 +307,7 @@ const FALLBACK_LANGUAGES = [
 ];
 
 import { useLastInvoicePrinting } from "../../composables/core/useLastInvoicePrinting";
+import { useBoltOrdersStore } from "../../stores/boltOrdersStore";
 import { useUpdateStore } from "../../stores/updateStore";
 import { useEmployeeStore } from "../../stores/employeeStore";
 import { storeToRefs } from "pinia";
@@ -329,7 +330,7 @@ export default {
 		const updateStore = useUpdateStore();
 		const employeeStore = useEmployeeStore();
 		const { currentCashier, currentCashierDisplay } = storeToRefs(employeeStore);
-		return { printLastInvoice, updateStore, employeeStore, currentCashier, currentCashierDisplay };
+		return { boltStore: useBoltOrdersStore(), printLastInvoice, updateStore, employeeStore, currentCashier, currentCashierDisplay };
 	},
 	data() {
 		return {
@@ -396,6 +397,7 @@ export default {
 		},
 		quickActions() {
 			const actions = [
+				this.boltStore.enabled ? { id: "bolt-orders", label: __("Bolt Orders"), subtitle: __("Pick and hand over Bolt deliveries"), icon: "mdi-moped", tone: "success", handler: "boltOrders" } : null,
 				{
 					id: "switch-cashier",
 					label: __("Switch Cashier"),
@@ -629,6 +631,10 @@ export default {
 			}
 
 			switch (action.handler) {
+				case "boltOrders":
+					this.closeMenu();
+					this.$router.push("/bolt-orders");
+					break;
 				case "openEmployeeSwitch":
 					this.closeMenu();
 					this.$emit("open-employee-switch");

@@ -13,6 +13,7 @@ import OfflineRouteUnavailable from "../components/system/OfflineRouteUnavailabl
 const OFFLINE_ROUTE_UNAVAILABLE_NAME = "offline-route-unavailable";
 
 const routes = [
+	{ path: "/bolt-orders", component: () => import("../components/bolt/BoltOrders.vue"), meta: { title: "Bolt Orders", layout: "default", loadingMessage: "Loading Bolt orders..." } },
 	{ path: "/", redirect: "/pos" },
 	{
 		path: "/pos",
