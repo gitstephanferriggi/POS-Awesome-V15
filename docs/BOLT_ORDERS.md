@@ -47,3 +47,21 @@ allowed. If the final basket differs from that approved preview, handover is blo
 Store status is the last webhook observation, shown separately from the last request result.
 New courier pickup callbacks display confirmation without duplicating ERP invoices.
 Production remains opt-in; this commit is for UAT testing, not automatic activation.
+
+## Persistent store banner
+
+The global POS banner now includes store status, manager-only accept/pause controls,
+and alarm controls. The order workspace reuses this global banner rather than repeating
+store controls. Green means accepting, amber paused/unconfirmed, and grey unknown/pending.
+The current action is disabled; uncertain actions remain blocked pending manager review.
+
+The alarm is enabled at the start of each app session. It attempts audio startup immediately
+and retries on a normal POS pointer or keyboard interaction if the browser blocks autoplay.
+The banner reports that sound is blocked until the AudioContext is actually running.
+Mute stops this terminal's alarm until explicitly re-enabled or the app reloads; it does not
+acknowledge orders or pause the store. Acknowledgement still stops the shared order alarm.
+The Quick Actions entry uses a white lightning icon on a green background.
+
+Verification: 12 store tests and two alarm cases (autoplay allowed/blocked, first interaction,
+mute/unmute, repeated ringing, shared acknowledgement), TypeScript and production build.
+Physical speaker volume, sleeping browsers and visual acceptance still require UAT testing.

@@ -12,26 +12,6 @@
 			>Bolt operations are not enabled for this terminal, or access has not been configured.</v-alert
 		>
 		<template v-else>
-			<v-alert :type="store.statusBanner.type" variant="tonal" class="mb-4" role="status" aria-live="polite">
-				<strong>{{ store.statusBanner.title }}</strong>
-				<div>{{ store.statusBanner.text }}</div>
-			</v-alert>
-			<div class="actions">
-				<v-btn
-					v-if="store.canReject"
-					:disabled="store.storeControlsBlocked || store.availability === 'open'"
-					:color="store.availability === 'open' ? 'grey' : 'success'"
-					@click="storeChoice = 'open'"
-					>Accept new orders</v-btn
-				>
-				<v-btn
-					v-if="store.canReject"
-					:disabled="store.storeControlsBlocked || store.availability === 'pause'"
-					:color="store.availability === 'pause' ? 'grey' : 'warning'"
-					@click="storeChoice = 'pause'"
-					>Pause new orders</v-btn
-				>
-			</div>
 			<v-alert v-if="notice" type="info" class="mb-4">{{ notice }}</v-alert>
 			<v-alert v-if="store.overflow" type="warning"
 				>More than 200 active orders. Ask a manager to review the backlog.</v-alert
@@ -231,21 +211,6 @@
 				<article v-else class="order-detail empty">Choose an order to begin.</article>
 			</div>
 		</template>
-		<v-dialog :model-value="!!storeChoice" max-width="500" @update:model-value="storeChoice = ''">
-			<v-card title="Change Bolt store availability"
-				><v-card-text>{{
-					storeChoice === "open"
-						? "Allow new Bolt orders to arrive? Make sure staff and the alarm terminal are ready."
-						: "Pause new Bolt orders indefinitely? Existing orders still need to be fulfilled."
-				}}</v-card-text
-				><v-card-actions
-					><v-btn :disabled="store.busy" @click="storeChoice = ''">Back</v-btn
-					><v-btn :disabled="store.busy" color="primary" @click="changeStore"
-						>Confirm</v-btn
-					></v-card-actions
-				></v-card
-			>
-		</v-dialog>
 		<v-dialog v-model="adjustDialog" max-width="850" :persistent="store.busy">
 			<v-card title="Manager: review final basket">
 				<v-card-text>
@@ -311,8 +276,7 @@
 import { computed, ref, watch } from "vue";
 import { useBoltOrdersStore, type BoltOrder } from "../../stores/boltOrdersStore";
 const store = useBoltOrdersStore();
-const storeChoice = ref(""),
-	notice = ref(""),
+const notice = ref(""),
 	adjustDialog = ref(false);
 const replacementChoices = ref<Record<string, string | null>>({});
 const replacementOptions = ref<{ code: string; name: string; price: number; label: string }[]>([]);
@@ -378,16 +342,6 @@ watch(
 	},
 	{ deep: true },
 );
-async function changeStore() {
-	try {
-		const result = await store.command("store_status", { action: storeChoice.value });
-		notice.value = result.message;
-		storeChoice.value = "";
-	} catch (e: any) {
-		error.value = e.message;
-		storeChoice.value = "";
-	}
-}
 async function recover(method: string) {
 	if (!selected.value) return;
 	try {

@@ -18,6 +18,7 @@ class FakeAudio {
 	currentTime = 0;
 	destination = {};
 	resume = vi.fn().mockResolvedValue(undefined);
+	suspend = vi.fn().mockResolvedValue(undefined);
 	close = vi.fn().mockResolvedValue(undefined);
 	createOscillator() {
 		return {
@@ -57,7 +58,12 @@ afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
 });
-it("requires a gesture, repeats and stops after shared acknowledgement", async () => {
+it.each([false, true])("defaults on, mutes and acknowledges (browser blocked: %s)", async (blocked) => {
+    let allowSound = !blocked;
+    vi.stubGlobal("AudioContext", class extends FakeAudio {
+        state = blocked ? "suspended" : "running";
+        resume = vi.fn(async () => { if (allowSound) this.state = "running"; });
+    });
 	vi.mocked(api.call).mockResolvedValue({
 		enabled: true,
 		orders: [{ name: "1", workflow_state: "New", picks: {} }],
@@ -85,9 +91,24 @@ it("requires a gesture, repeats and stops after shared acknowledgement", async (
 		},
 	});
 	await flush();
-	expect(beep).not.toHaveBeenCalled();
-	expect(wrapper.text()).toContain("Enable order alarm");
-	await wrapper.find("button").trigger("click");
+    await vi.advanceTimersByTimeAsync(0);
+    if (blocked) {
+        expect(beep).not.toHaveBeenCalled();
+        expect(wrapper.text()).toContain("click anywhere in POS");
+        allowSound = true;
+        document.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter"}));
+        await flush();
+        await vi.advanceTimersByTimeAsync(0);
+    }
+	expect(beep).toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Mute alarm");
+    await wrapper.find("[data-alarm-toggle]").trigger("click");
+    await flush();
+    const muted = beep.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1900);
+    expect(beep.mock.calls.length).toBe(muted);
+    expect(wrapper.text()).toContain("Alarm muted");
+    await wrapper.find("[data-alarm-toggle]").trigger("click");
 	await flush();
 	const initial = beep.mock.calls.length;
 	await vi.advanceTimersByTimeAsync(1900);

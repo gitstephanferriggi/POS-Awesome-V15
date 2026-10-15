@@ -397,7 +397,7 @@ export default {
 		},
 		quickActions() {
 			const actions = [
-				this.boltStore.enabled ? { id: "bolt-orders", label: __("Bolt Orders"), subtitle: __("Pick and hand over Bolt deliveries"), icon: "mdi-moped", tone: "success", handler: "boltOrders" } : null,
+				this.boltStore.enabled ? { id: "bolt-orders", label: __("Bolt Orders"), subtitle: __("Pick and hand over Bolt deliveries"), icon: "mdi-flash", tone: "success", handler: "boltOrders" } : null,
 				{
 					id: "switch-cashier",
 					label: __("Switch Cashier"),
@@ -1169,6 +1169,9 @@ export default {
 	box-shadow: none;
 }
 
+.quick-action-card--success .quick-action-card__icon {
+ background: linear-gradient(135deg, #159447, #34c875);
+}
 .quick-action-card--primary .quick-action-card__icon,
 .settings-action--primary .settings-action__icon,
 .settings-launch-card__icon {
