@@ -27,8 +27,7 @@ export function useLastInvoicePrinting() {
 		return Boolean(value);
 	}
 
-	async function printLastInvoice() {
-		const lastInvoiceId = uiStore.lastInvoiceId;
+	async function printInvoice(lastInvoiceId: string | null, invoiceDoctype?: "POS Invoice" | "Sales Invoice") {
 		const posProfile = uiStore.posProfile;
 
 		if (!lastInvoiceId) {
@@ -44,9 +43,9 @@ export function useLastInvoicePrinting() {
 		const pf =
 			posProfile.print_format_for_online || posProfile.print_format;
 		const letter_head = posProfile.letter_head || 0;
-		const doctype = posProfile.create_pos_invoice_instead_of_sales_invoice
+		const doctype = invoiceDoctype || (posProfile.create_pos_invoice_instead_of_sales_invoice
 			? "POS Invoice"
-			: "Sales Invoice";
+			: "Sales Invoice");
 		const debugPrint = isDebugPrintEnabled();
 		const openInNewTab = parseBooleanSetting(
 			posProfile.posa_open_print_in_new_tab,
@@ -160,10 +159,16 @@ export function useLastInvoicePrinting() {
 			return;
 		}
 
-		console.warn("Popup blocked or failed to open print window");
+		console.warn("Popup blocked; using embedded receipt printing");
+		silentPrint(url, printOptions);
+	}
+
+	async function printLastInvoice() {
+		return printInvoice(uiStore.lastInvoiceId);
 	}
 
 	return {
+		printInvoice,
 		printLastInvoice,
 	};
 }

@@ -20,6 +20,8 @@ export interface BoltOrder {
 	name: string;
 	modified: string;
 	order_reference: string;
+	pos_invoice?: string;
+	sales_invoice?: string;
 	bolt_order_id: string;
 	workflow_state: string;
 	acknowledged_by?: string;

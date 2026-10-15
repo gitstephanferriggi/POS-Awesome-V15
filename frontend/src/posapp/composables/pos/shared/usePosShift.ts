@@ -1,4 +1,5 @@
 import { ref, getCurrentInstance, inject } from "vue";
+import { useRouter } from "vue-router";
 import { useToastStore } from "../../../stores/toastStore.js";
 import { useUIStore } from "../../../stores/uiStore.js";
 import { useInvoiceStore } from "../../../stores/invoiceStore";
@@ -78,6 +79,7 @@ function normalizeClosingShiftPreparationResponse(
 }
 
 export function usePosShift(openDialog?: () => void) {
+	const router = useRouter();
 	const instance = getCurrentInstance();
 	const proxy: any = instance?.proxy;
 	const eventBus: any = proxy?.eventBus || inject("eventBus");
@@ -241,7 +243,15 @@ export function usePosShift(openDialog?: () => void) {
 						title: "POS Shift Closed",
 						color: "success",
 					});
-					check_opening_entry();
+					// Other screens (including Bolt) do not host the opening dialog.
+					if (router && router.currentRoute.value.path !== "/pos") {
+						void router.replace("/pos").catch((error) => {
+							console.error("Shift closed, but returning to POS failed", error);
+							toastStore.show({ title: "Shift closed. Open POS to start a new shift.", color: "warning" });
+						});
+					} else {
+						void check_opening_entry();
+					}
 				}
 				return r.message;
 			});

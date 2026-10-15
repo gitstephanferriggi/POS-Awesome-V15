@@ -65,3 +65,18 @@ The Quick Actions entry uses a white lightning icon on a green background.
 Verification: 12 store tests and two alarm cases (autoplay allowed/blocked, first interaction,
 mute/unmute, repeated ringing, shared acknowledgement), TypeScript and production build.
 Physical speaker volume, sleeping browsers and visual acceptance still require UAT testing.
+
+### Receipt and closing completion
+
+A successful handover prints the returned submitted POS Invoice (or Sales Invoice)
+through the shared receipt service, using the active POS Profile print format,
+letterhead and configured QZ/browser path. The recorded order also offers **Print
+receipt** for reprints without repeating handover or creating another sale. The
+invoice reference becomes the till's last invoice for the existing menu action.
+
+Confirmed shift closing from Bolt or other non-selling pages returns to `/pos`,
+where the existing opening flow starts. A failed closing preserves the shift and
+current route. Printing errors do not undo a recorded sale.
+
+Verification: focused receipt, closing navigation, Bolt store and alarm unit tests;
+frontend production build. Physical printer output still requires UAT terminal testing.

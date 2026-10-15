@@ -202,6 +202,7 @@
 							>Report a problem</v-btn
 						>
 					</div>
+					<v-btn v-if="selected.pos_invoice || selected.sales_invoice" :disabled="printing || store.busy" @click="printReceipt()">Print receipt</v-btn>
 					<p class="footnote">
 						Payment is collected by Bolt. Handover records the sale under your open shift with the
 						separate Bolt Food payment method. POS invoices are consolidated at closing.
@@ -275,6 +276,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useBoltOrdersStore, type BoltOrder } from "../../stores/boltOrdersStore";
+import { useLastInvoicePrinting } from "../../composables/core/useLastInvoicePrinting";
+import { useUIStore } from "../../stores/uiStore";
+const { printInvoice } = useLastInvoicePrinting();
+const uiStore = useUIStore();
+const printing = ref(false);
 const store = useBoltOrdersStore();
 const notice = ref(""),
 	adjustDialog = ref(false);
@@ -311,11 +317,28 @@ async function reload() {
 	await store.refresh();
 	if (selected.value) await open(selected.value.name);
 }
+async function printReceipt(order = selected.value) {
+	if (!order || printing.value) return;
+	const name = order.pos_invoice || order.sales_invoice;
+	if (!name) return;
+	printing.value = true;
+	try {
+		uiStore.setLastInvoice(name);
+		await printInvoice(name, order.pos_invoice ? "POS Invoice" : "Sales Invoice");
+	} catch (e: any) {
+		error.value = "Sale is recorded, but receipt printing failed. Use Print receipt to retry. " + (e.message || "");
+	} finally {
+		printing.value = false;
+	}
+}
 async function action(kind: string, extra = {}) {
 	if (!selected.value) return;
 	try {
 		const result = await store.act(selected.value, kind, extra);
 		await open(result.name);
+		if (kind === "handover" && result.workflow_state === "Collected") {
+			await printReceipt(result);
+		}
 	} catch (e: any) {
 		error.value = e.message || "Action failed. Refresh before trying again.";
 	}
