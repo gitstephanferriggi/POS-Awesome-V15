@@ -133,7 +133,26 @@
 									</div>
 								</template>
 
-								<template #item.actions="{ index }">
+								<template #item.actions="{ item, index }">
+									<div v-if="item.last_error" class="text-error text-caption mb-2">
+										{{ errorSummary(item.last_error) }}
+									</div>
+									<div
+										v-if="item.status === 'dead_letter'"
+										class="text-warning text-caption"
+									>
+										{{ __("Stopped after repeated failures") }}
+									</div>
+									<v-btn
+										v-if="['failed', 'dead_letter'].includes(item.status)"
+										color="primary"
+										variant="tonal"
+										:loading="retryingId === item.queue_id"
+										:disabled="retryingId !== null"
+										@click="retryInvoice(item)"
+									>
+										{{ __("Retry original transaction") }}
+									</v-btn>
 									<v-btn
 										v-if="posProfile.posa_allow_delete_offline_invoice"
 										icon
@@ -198,7 +217,12 @@
 <script setup>
 import { ref, watch } from "vue";
 import { formatUtils } from "../format";
-import { getOfflineInvoices, deleteOfflineInvoice, getPendingOfflineInvoiceCount } from "../../offline/index";
+import {
+	getOfflineInvoices,
+	deleteOfflineInvoice,
+	getPendingOfflineInvoiceCount,
+	retryOfflineInvoice,
+} from "../../offline/index";
 
 defineOptions({
 	name: "OfflineInvoicesDialog",
@@ -219,6 +243,7 @@ const currency_precision = ref(2);
 
 const dialog = ref(props.modelValue);
 const invoices = ref([]);
+const retryingId = ref(null);
 const headers = [
 	{
 		title: __("Customer"),
@@ -289,6 +314,39 @@ function currencySymbol(currency) {
 
 function loadInvoices() {
 	invoices.value = getOfflineInvoices();
+}
+
+function errorSummary(error) {
+	try {
+		const parsed = JSON.parse(error);
+		return String(parsed.responseJSON?.exception || parsed.message || error).slice(0, 300);
+	} catch {
+		return String(error).slice(0, 300);
+	}
+}
+
+async function retryInvoice(item) {
+	if (
+		!window.confirm(
+			__(
+				"Retry this original transaction, including its recorded payment? Its original reference will be reused to prevent duplicates.",
+			),
+		)
+	)
+		return;
+	retryingId.value = item.queue_id;
+	try {
+		await retryOfflineInvoice(item.queue_id);
+		loadInvoices();
+		dialog.value = false;
+		emit("sync-all");
+	} catch (error) {
+		window.alert(
+			error?.message || __("The transaction could not be retried. It remains saved on this till."),
+		);
+	} finally {
+		retryingId.value = null;
+	}
 }
 
 async function removeInvoice(index) {

@@ -1201,11 +1201,45 @@ def update_invoice(data):
     return response
 
 
+def _submit_offline_sales_order(invoice, data, client_request_id):
+    """Use the order/deposit flow, serialized by the existing submission ledger."""
+    from posawesome.posawesome.api.sales_orders import submit_sales_order
+
+    if not client_request_id:
+        frappe.throw(_("An offline Sales Order requires its original request ID."))
+    ledger = _get_or_create_submission_ledger(client_request_id, invoice, data, "Sales Order")
+    # A retry and the original request must not post the cash advance twice.
+    frappe.db.sql("SELECT name FROM `tabPOS Invoice Submission Ledger` WHERE name=%s FOR UPDATE", ledger.name)
+    ledger.flags.for_update = True
+    ledger.reload()
+    response = _ledger_final_replay_response(ledger)
+    if response:
+        if response["docstatus"] != 1:
+            frappe.throw(_("The recovered order needs review before retrying."))
+        return response
+    # This route creates the order and its deposits together. A failed deposit
+    # must roll back the whole request, including when invoked outside HTTP.
+    frappe.db.savepoint("offline_sales_order")
+    try:
+        if invoice.get("posting_date"):
+            invoice.setdefault("transaction_date", invoice["posting_date"])
+        result = submit_sales_order(json.dumps(invoice), payment_posting_date=invoice.get("posting_date"))
+        _update_submission_ledger(ledger, STATE_POST_SUBMIT_DONE, invoice_name=result["name"])
+    except Exception:
+        frappe.db.rollback(save_point="offline_sales_order")
+        raise
+    return dict(result, docstatus=result["status"], doctype="Sales Order",
+                client_request_id=client_request_id, idempotent=True,
+                ledger_state=STATE_POST_SUBMIT_DONE)
+
+
 @frappe.whitelist()
 def submit_invoice(invoice, data, submit_in_background=False):
     data = json.loads(data)
     invoice = json.loads(invoice)
     client_request_id = extract_invoice_client_request_id(invoice, data)
+    if invoice.get("doctype") == "Sales Order":
+        return _submit_offline_sales_order(invoice, data, client_request_id)
     _sanitize_delivery_dates(invoice)
     _apply_manual_posting_controls(invoice)
     submit_in_background = cint(submit_in_background)

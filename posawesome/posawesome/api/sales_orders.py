@@ -105,8 +105,9 @@ def update_sales_order(data):
     return so_doc
 
 
-def _create_payment_entries(so_doc, payments):
+def _create_payment_entries(so_doc, payments, posting_date=None):
     """Create payment entries referencing the sales order."""
+    payment_date = getdate(posting_date) if posting_date else nowdate()
     for pay in payments or []:
         if not pay.get("amount"):
             continue
@@ -119,8 +120,8 @@ def _create_payment_entries(so_doc, payments):
             currency=pay.get("currency") or so_doc.currency,
             mode_of_payment=pay.get("mode_of_payment"),
             reference_no=so_doc.get("posa_pos_opening_shift"),
-            reference_date=nowdate(),
-            posting_date=nowdate(),
+            reference_date=payment_date,
+            posting_date=payment_date,
             submit=0,
         )
 
@@ -141,7 +142,7 @@ def _create_payment_entries(so_doc, payments):
 
 
 @frappe.whitelist()
-def submit_sales_order(order):
+def submit_sales_order(order, payment_posting_date=None):
     """Submit sales order and create payment entries."""
     order = json.loads(order)
     _map_delivery_dates(order)
@@ -162,6 +163,9 @@ def submit_sales_order(order):
     # Keep the deposit and order in the same request transaction. Any payment
     # failure rolls back the order; printing begins only after both are saved.
     if payments:
-        _create_payment_entries(so_doc, payments)
+        if payment_posting_date:
+            _create_payment_entries(so_doc, payments, posting_date=payment_posting_date)
+        else:
+            _create_payment_entries(so_doc, payments)
 
     return {"name": so_doc.name, "status": so_doc.docstatus}

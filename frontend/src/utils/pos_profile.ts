@@ -2,6 +2,7 @@ import {
 	getOpeningStorage,
 	setOpeningStorage,
 	setPrintTemplate,
+	setOfflinePrintContext,
 	setTermsAndConditions,
 	getBootstrapSnapshot,
 	setBootstrapSnapshot,
@@ -18,9 +19,19 @@ async function cachePrintTemplateAndTerms(profile: any) {
 	if (!profile || typeof frappe === "undefined" || !navigator.onLine) return;
 
 	try {
-		setPrintTemplate("");
+		const receipt = await frappe.call({
+			method: "posawesome.posawesome.api.print_formats.get_offline_print_context",
+			args: { pos_profile: profile.name },
+		});
+		if (receipt.message?.profile === profile.name) {
+			setOfflinePrintContext(receipt.message);
+			setPrintTemplate(receipt.message.html || "");
+		}
 	} catch (e) {
-		console.error("Failed to reset print template", e);
+		console.error(
+			"Failed to cache the configured receipt layout; keeping the previous cached layout",
+			e,
+		);
 	}
 
 	try {
@@ -109,7 +120,8 @@ export async function ensurePosProfile() {
 				createBootstrapSnapshotFromRegisterData(
 					{
 						pos_profile: res.message,
-						pos_opening_shift: (getOpeningStorage() as any)?.pos_opening_shift,
+						pos_opening_shift: (getOpeningStorage() as any)
+							?.pos_opening_shift,
 					},
 					getBootstrapSnapshot(),
 					{ buildVersion: BUILD_VERSION },

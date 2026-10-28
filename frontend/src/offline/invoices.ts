@@ -1,4 +1,4 @@
-import { isOffline, memory, persist } from "./db";
+import { db, isOffline, memory, persist } from "./db";
 import { syncOfflineCustomers } from "./customers";
 import { reduceCacheUsage } from "./cache";
 import { ensureOfflineInvoiceRequest } from "./idempotency";
@@ -11,6 +11,9 @@ import {
 import { updateLocalStock } from "./stock";
 import {
 	claimRetryableQueueEntries,
+	ensureOfflineQueueReady,
+	getQueueEntries,
+	refreshQueueMemory,
 	clearWriteQueueEntries,
 	deleteWriteQueueEntryByIndex,
 	enqueueWriteQueueEntry,
@@ -231,6 +234,59 @@ export async function saveOfflineInvoice(entry: AnyRecord) {
 	return createdEntry;
 }
 
+// Explicit user retry only: keep the original payload and idempotency key.
+export async function retryOfflineInvoice(queueId: number) {
+	await ensureOfflineQueueReady();
+	const snapshot = (await getQueueEntries(INVOICE_ENTITY)).find(
+		(row) => row.queue_id === queueId,
+	);
+	if (!snapshot || !["failed", "dead_letter"].includes(snapshot.status)) {
+		throw new Error("Only a failed or stopped invoice can be retried.");
+	}
+	const outbox = shouldWriteInvoiceOutbox()
+		? await enqueueInvoiceOutboxEntry(snapshot.payload)
+		: null;
+	const queueTable = db.table("write_queue"),
+		outboxTable = db.table("invoice_outbox");
+	await db.transaction("rw", [queueTable, outboxTable], async () => {
+		const row = await queueTable.get(queueId);
+		if (
+			!row ||
+			row.entity_type !== INVOICE_ENTITY ||
+			!["failed", "dead_letter"].includes(row.status)
+		) {
+			throw new Error(
+				"This invoice has changed. Reopen Offline Invoices before retrying.",
+			);
+		}
+		if (outbox) {
+			const current = await outboxTable.get(outbox.outbox_id!);
+			if (current.status === "syncing")
+				throw new Error("This invoice is already syncing.");
+			if (current.status === "acknowledged") {
+				await queueTable.put({ ...row, status: "synced" });
+				return;
+			}
+			await outboxTable.put({
+				...current,
+				status: "pending",
+				retry_count: 0,
+				next_retry_at: null,
+				nextAttemptAt: null,
+				updated_at: new Date().toISOString(),
+			});
+		}
+		await queueTable.put({
+			...row,
+			status: "pending",
+			retry_count: 0,
+			last_attempt_at: null,
+			next_attempt_at: null,
+		});
+	});
+	await refreshQueueMemory(INVOICE_ENTITY);
+}
+
 export function getOfflineInvoices() {
 	return getQueuedPayloadSnapshots(INVOICE_ENTITY);
 }
@@ -339,6 +395,15 @@ export async function syncOfflineInvoices() {
 					entry.last_attempt_at,
 				);
 			} catch (error) {
+				if (queuedInvoice.invoice?.doctype === "Sales Order") {
+					await markWriteQueueEntryFailed(
+						INVOICE_ENTITY,
+						Number(entry.queue_id),
+						error,
+						entry.last_attempt_at,
+					);
+					continue;
+				}
 				console.error(
 					"Failed to submit invoice, saving as draft",
 					error,

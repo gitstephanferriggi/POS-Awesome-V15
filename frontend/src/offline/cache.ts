@@ -1311,6 +1311,15 @@ export function saveTranslationsCache(lang, data) {
 	}
 }
 
+export function getOfflinePrintContext() {
+	return memory.offline_print_context || null;
+}
+
+export function setOfflinePrintContext(context) {
+	memory.offline_print_context = context;
+	persist("offline_print_context");
+}
+
 export function getPrintTemplate() {
 	try {
 		return memory.print_template || "";

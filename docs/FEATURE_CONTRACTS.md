@@ -128,6 +128,12 @@ Rules:
 
 ---
 
+### Offline Sales Order recovery
+
+Offline Sales Orders use the existing Sales Order/deposit submission flow rather than invoice payment-row conversion. The order and its advances are saved in one transaction; the original posting date becomes the order/payment date. The submission ledger serializes retries by the original request ID so an uncertain response cannot duplicate the order or cash advance. Ordinary online order/payment dates keep their existing defaults.
+
+A failed Sales Order must remain queued; saving a draft is not confirmation of its cash advance. Stopped queue entries require an explicit per-entry retry with confirmation. Retry preserves the payload/request ID and aligns the legacy queue with the optional coordinator outbox; an acknowledged transaction is not resubmitted. The Offline Invoices dialog shows the stored error and stopped status. Preserve/export the local queue before attempting recovery; do not recreate the sale from a printed chit alone.
+
 ## 5. Printing Contract
 
 Printing is linked with:
@@ -154,6 +160,10 @@ Rules:
 - Print settings should respect POS Profile configuration where applicable.
 
 ---
+
+### Offline receipt layout
+
+The configured POS Profile receipt HTML/CSS and letterhead are cached for that profile; local raster logos are embedded for disconnected printing. Offline receipts use the same layout, with a Pending synchronisation banner and an offline request reference separate from the ERP document number. Amounts come from the saved transaction. Supported payment lookups use that snapshot; server-only loyalty balances are omitted until confirmed online. A missing/mismatched or unsupported configured template must report that normal printing is unavailable rather than silently hand the customer a generic replacement. Browser and print-fallback paths share this renderer; existing Car Wash terminal/raw-printer controls are unchanged.
 
 ## 6. Customer Contract
 

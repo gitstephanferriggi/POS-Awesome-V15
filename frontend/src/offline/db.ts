@@ -202,6 +202,7 @@ export const DERIVED_OFFLINE_CACHE_KEYS = Object.freeze([
 	"pricing_rules_last_sync",
 	"pricing_rules_stale_at",
 	"print_template",
+	"offline_print_context",
 	"terms_and_conditions",
 	"cache_ready",
 	"bootstrap_snapshot",
@@ -331,6 +332,7 @@ const MEMORY_DEFAULTS: AnyRecord = {
 	pricing_rules_last_sync: null,
 	pricing_rules_stale_at: null,
 	print_template: "",
+	offline_print_context: null,
 	terms_and_conditions: "",
 	cache_ready: false,
 	bootstrap_snapshot: null,
@@ -1132,6 +1134,7 @@ export async function forceClearAllCache() {
 	memory.pricing_rules_last_sync = null;
 	memory.pricing_rules_stale_at = null;
 	memory.print_template = "";
+	memory.offline_print_context = null;
 	memory.terms_and_conditions = "";
 	memory.cache_ready = false;
 	memory.bootstrap_snapshot = null;

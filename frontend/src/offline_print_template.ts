@@ -1,5 +1,8 @@
 import {
 	getPrintTemplate,
+	getOfflinePrintContext,
+	getOpeningStorage,
+	getStoredCustomer,
 	getTermsAndConditions,
 	memoryInitPromise,
 } from "./offline/index";
@@ -9,6 +12,21 @@ declare const frappe: any;
 
 function normaliseTemplate(template: string) {
 	if (!template) return template;
+	// Server-only ledger lookups cannot run on a disconnected till. Keep the
+	// normal template's layout, using only the saved transaction's payment data.
+	template = template.replace(
+		/{%-?\s*set\s+(\w+)\s*=\s*frappe\.db\.sql\([\s\S]*?%}/g,
+		(tag, variable) => {
+			if (tag.includes("tabPayment Entry")) {
+				return `{% set ${variable} = ${/GROUP BY/i.test(tag) ? "[]" : "doc.paid_amount"} %}`;
+			}
+			if (tag.includes("tabLoyalty Point Entry"))
+				return `{% set ${variable} = none %}`;
+			throw new Error(
+				"This receipt contains a server lookup that cannot be printed offline. Connect before printing.",
+			);
+		},
+	);
 	return template.replace(/"""([\s\S]*?)"""/g, (_, str) => {
 		const escaped = str
 			.replace(/\\/g, "\\\\")
@@ -20,8 +38,22 @@ function normaliseTemplate(template: string) {
 
 function attachFormatter(obj: any) {
 	if (!obj || typeof obj !== "object" || obj.get_formatted) return;
+	obj.get = function (field: string, fallback: any = null) {
+		return this[field] ?? fallback;
+	};
 	obj.get_formatted = function (field: string) {
-		return this?.[field];
+		const value = this?.[field];
+		if (value == null) return "";
+		if (
+			typeof value === "number" &&
+			!["qty", "rate_percent", "loyalty_points"].includes(field)
+		) {
+			return new Intl.NumberFormat(undefined, {
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2,
+			}).format(value);
+		}
+		return value;
 	};
 }
 
@@ -176,7 +208,29 @@ export default async function renderOfflineInvoiceHTML(invoice: any) {
 
 	await memoryInitPromise;
 
-	const template = normaliseTemplate(getPrintTemplate());
+	const cached = getOfflinePrintContext();
+	const profile = getOpeningStorage()?.pos_profile;
+	const profileName = invoice.pos_profile || profile?.name;
+	const receipt = cached && cached.profile === profileName ? cached : null;
+	const configuredFormat =
+		profile?.name === profileName &&
+		(profile?.print_format_for_online || profile?.print_format);
+	if (
+		configuredFormat &&
+		(!receipt?.html || receipt.format !== configuredFormat)
+	) {
+		throw new Error(
+			"The normal receipt layout is not cached for this till. Connect to load it before printing.",
+		);
+	}
+	if (profileName && !receipt)
+		throw new Error(
+			"The normal receipt layout is not cached for this till. Connect to load it before printing.",
+		);
+	const template = normaliseTemplate(
+		receipt?.html ||
+			(!configuredFormat && !profileName ? getPrintTemplate() : ""),
+	);
 	const terms = getTermsAndConditions();
 	const doc = {
 		...invoice,
@@ -185,19 +239,41 @@ export default async function renderOfflineInvoiceHTML(invoice: any) {
 	};
 
 	doc.paid_amount = computePaidAmount(doc);
+	const pending = Number(doc.docstatus) !== 1;
+	const customer = doc.customer
+		? await getStoredCustomer(doc.customer)
+		: null;
+	doc.customer_name =
+		doc.customer_name || customer?.customer_name || doc.customer;
+	if (!doc.name && pending) doc.name = "Not assigned yet";
 	attachFormatter(doc);
-	(doc.items || []).forEach(attachFormatter);
-	(doc.taxes || []).forEach(attachFormatter);
+	(doc.items || []).forEach((row: any) => attachFormatter(row));
+	(doc.taxes || []).forEach((row: any) => attachFormatter(row));
+	(doc.payments || []).forEach((row: any) => attachFormatter(row));
+	const offlineReference = String(doc.posa_client_request_id || "").replace(
+		/[&<>"']/g,
+		(c) =>
+			({
+				"&": "&amp;",
+				"<": "&lt;",
+				">": "&gt;",
+				'"': "&quot;",
+				"'": "&#39;",
+			})[c] || c,
+	);
+	const pendingLabel = pending
+		? `<div style="border:2px solid #000;padding:6px;text-align:center;font-weight:bold">Pending synchronisation<br>Not yet recorded in ERPNext${offlineReference ? `<br><small>Offline reference: ${offlineReference}</small>` : ""}</div>`
+		: "";
 
 	if (!template) {
 		console.warn(
 			"No offline print template cached; using fallback template",
 		);
-		return defaultOfflineHTML(doc, doc.terms_and_conditions);
+		return pendingLabel + defaultOfflineHTML(doc, doc.terms_and_conditions);
 	}
 
 	try {
-		const env = nunjucks.configure({ autoescape: false });
+		const env = nunjucks.configure({ autoescape: true });
 		env.addFilter("format_currency", (value: unknown, currency: string) => {
 			const number =
 				typeof value === "number" ? value : parseFloat(String(value));
@@ -220,17 +296,39 @@ export default async function renderOfflineInvoiceHTML(invoice: any) {
 
 		const context = {
 			doc,
+			letter_head: new nunjucks.runtime.SafeString(
+				receipt?.letter_head || "",
+			),
 			terms: doc.terms,
 			terms_and_conditions: doc.terms_and_conditions,
 			_: frappe?._ ? frappe._ : (t: string) => t,
 			frappe: {
-				db: { get_value: () => "", sql: () => [] },
+				db: {
+					get_value: (_dt: string, _name: string, field: string) =>
+						customer?.[field] || "",
+				},
+				utils: {
+					today: () => doc.posting_date || doc.transaction_date || "",
+					fmt_money: (value: any) =>
+						new Intl.NumberFormat(undefined, {
+							minimumFractionDigits: 2,
+							maximumFractionDigits: 2,
+						}).format(Number(value || 0)),
+				},
 				get_list: () => [],
 			},
 		};
-		return env.renderString(template, context);
+		const body = env.renderString(template, context);
+		return `<!doctype html><html><head><meta charset="utf-8"><style>
+		body{font-family:Arial,sans-serif;margin:0} .print-format{width:80mm;box-sizing:border-box;padding:4mm;font-size:12px}
+		.text-center{text-align:center}.text-right{text-align:right}table{width:100%;border-collapse:collapse}td,th{padding:2px}
+		img{max-width:100%;height:auto} ${receipt?.css || ""}</style></head><body><div class="print-format">${pendingLabel}${body}</div></body></html>`;
 	} catch (e) {
 		console.error("Failed to render offline invoice", e);
-		return defaultOfflineHTML(doc, doc.terms_and_conditions);
+		if (configuredFormat || receipt)
+			throw new Error(
+				"The normal receipt could not be rendered offline. The transaction remains saved; connect before printing.",
+			);
+		return pendingLabel + defaultOfflineHTML(doc, doc.terms_and_conditions);
 	}
 }
