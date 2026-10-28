@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import cint
+from frappe.utils import cint, flt
 
 
 def _get_value(doc, fieldname, default=None):
@@ -70,12 +70,12 @@ def apply_pos_tax_inclusion_contract(doc, source_doc=None, recalculate=True):
     changed = False
     # Offline orders can carry item tax templates but no document tax rows.
     # ERPNext only extracts inclusive VAT when these rows exist before validation.
-    if _get_value(doc, "doctype") == "Sales Order" and not _tax_rows(doc):
+    if _get_value(doc, "doctype") in {"Sales Order", "Quotation"} and not _tax_rows(doc):
         from erpnext.controllers.accounts_controller import get_taxes_and_charges
 
         profile_company = frappe.get_cached_value("POS Profile", pos_profile, "company")
         if profile_company != _get_value(doc, "company"):
-            frappe.throw("The POS Profile company must match the Sales Order company.")
+            frappe.throw("The POS Profile company must match the document company.")
         template = _get_value(doc, "taxes_and_charges") or frappe.get_cached_value(
             "POS Profile", pos_profile, "taxes_and_charges"
         )
@@ -105,5 +105,16 @@ def apply_pos_tax_inclusion_contract(doc, source_doc=None, recalculate=True):
 
 
 def validate_pos_sales_order(doc, method=None):
-    # Sales Order validation calculates totals after this hook, using these flags.
+    # ERPNext validation calculates totals after this hook, using these flags.
     apply_pos_tax_inclusion_contract(doc, recalculate=False)
+
+
+def check_pos_inclusive_total(doc, expected_total):
+    """Reject extra VAT before submitting a POS document or taking its payment."""
+    if expected_total is None or not doc.get("pos_profile"):
+        return
+    if not cint(frappe.get_cached_value("POS Profile", doc.pos_profile, "posa_tax_inclusive")):
+        return
+    precision = doc.precision("grand_total")
+    if flt(doc.grand_total, precision) != flt(expected_total, precision):
+        frappe.throw("VAT-inclusive total changed during tax calculation. The transaction was not completed.")

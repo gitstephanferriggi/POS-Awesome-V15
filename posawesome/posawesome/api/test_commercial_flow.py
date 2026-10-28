@@ -56,6 +56,7 @@ def _install_stubs():
 
     frappe_utils = types.ModuleType("frappe.utils")
     frappe_utils.cint = lambda value: int(value or 0)
+    frappe_utils.flt = lambda value, precision=None: round(float(value or 0), precision) if precision is not None else float(value or 0)
     sys.modules["frappe.utils"] = frappe_utils
 
     tax_contracts_name = "posawesome.posawesome.api.tax_contracts"
@@ -217,6 +218,25 @@ class TestCommercialFlowApi(unittest.TestCase):
         self.assertEqual(prepared["flow_context"]["prepared_action"], "quote_to_order")
         self.assertEqual(prepared["flow_context"]["target_doctype"], "Sales Order")
         self.assertEqual(prepared["flow_context"]["source_links"]["quotation"], "QTN-0002")
+
+    def test_quote_order_and_delivery_mappings_preserve_inclusive_profile(self):
+        for action, target in [('quote_to_order', 'Sales Order'), ('order_to_delivery_note', 'Delivery Note')]:
+            with self.subTest(action=action):
+                source = FakeDoc(doctype='Quotation' if action == 'quote_to_order' else 'Sales Order',
+                    name='SOURCE', pos_profile='Inclusive Till', customer='Test', docstatus=1, items=[])
+                mapped = FakeDoc(doctype=target, pos_profile=None, items=[], taxes=[{
+                    'charge_type': 'On Net Total', 'included_in_print_rate': 0}])
+                self.module.frappe.get_doc = lambda *args: source
+                self.module.frappe.get_cached_value = lambda *args: 1
+                original = self.module._get_mapping_functions
+                self.module._get_mapping_functions = lambda: {action: lambda name: mapped}
+                try:
+                    result = self.module.prepare_document_flow_action(action=action,
+                        source_doctype=source.doctype, source_name='SOURCE')
+                finally:
+                    self.module._get_mapping_functions = original
+                self.assertEqual(result['prepared_doc']['pos_profile'], 'Inclusive Till')
+                self.assertEqual(result['prepared_doc']['taxes'][0]['included_in_print_rate'], 1)
 
     def test_prepare_order_to_invoice_preserves_vat_inclusive_tax_contract(self):
         def fake_get_doc(doctype, name):

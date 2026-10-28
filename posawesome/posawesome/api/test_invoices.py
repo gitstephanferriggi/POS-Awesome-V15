@@ -23,6 +23,7 @@ def _install_frappe_stub():
 
     frappe_utils = types.ModuleType("frappe.utils")
     frappe_utils.cint = lambda value: int(value or 0)
+    frappe_utils.flt = lambda value, precision=None: round(float(value or 0), precision) if precision is not None else float(value or 0)
     sys.modules["frappe.utils"] = frappe_utils
 
     tax_contracts_name = "posawesome.posawesome.api.tax_contracts"

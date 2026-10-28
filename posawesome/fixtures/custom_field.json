@@ -8544,5 +8544,33 @@
 		"print_hide": 1,
 		"no_copy": 0,
 		"is_system_generated": 1
+	},
+	{
+		"doctype": "Custom Field",
+		"dt": "Quotation",
+		"name": "Quotation-pos_profile",
+		"fieldname": "pos_profile",
+		"label": "POS Profile",
+		"fieldtype": "Link",
+		"options": "POS Profile",
+		"insert_after": "taxes_and_charges",
+		"read_only": 1,
+		"print_hide": 1,
+		"no_copy": 0,
+		"is_system_generated": 1
+	},
+	{
+		"doctype": "Custom Field",
+		"dt": "Delivery Note",
+		"name": "Delivery Note-pos_profile",
+		"fieldname": "pos_profile",
+		"label": "POS Profile",
+		"fieldtype": "Link",
+		"options": "POS Profile",
+		"insert_after": "taxes_and_charges",
+		"read_only": 1,
+		"print_hide": 1,
+		"no_copy": 0,
+		"is_system_generated": 1
 	}
 ]

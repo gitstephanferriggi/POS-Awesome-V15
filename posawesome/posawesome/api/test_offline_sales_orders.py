@@ -12,7 +12,7 @@ def load():
     p=Path(__file__).parent/'invoice_processing/creation.py'
     nodes=[n for n in ast.parse(p.read_text()).body if isinstance(n,ast.FunctionDef)]
     for node in nodes:node.decorator_list=[]
-    env={'json':json,'_':lambda s:s,'STATE_POST_SUBMIT_DONE':'POST_SUBMIT_DONE'}
+    env={'json':json,'flt':lambda v:float(v or 0),'_':lambda s:s,'STATE_POST_SUBMIT_DONE':'POST_SUBMIT_DONE'}
     exec(compile(ast.Module(body=nodes,type_ignores=[]),str(p),'exec'),env)
     return env
 
@@ -31,7 +31,7 @@ class OfflineSalesOrderTests(unittest.TestCase):
 
     def call(self):
         with patch.dict(sys.modules,{'posawesome.posawesome.api.sales_orders':self.module}):
-            return self.env['_submit_offline_sales_order'](dict(self.invoice),{},'original-request')
+            return self.env['_submit_offline_order_type'](dict(self.invoice),{},'original-request')
 
     def test_correct_flow_preserves_payment_and_original_dates(self):
         result=self.call();payload=json.loads(self.submit.call_args.args[0])
@@ -58,9 +58,28 @@ class OfflineSalesOrderTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.call()
         self.submit.assert_not_called()
 
+    def test_offline_quote_uses_quotation_api_and_original_profile(self):
+        self.invoice.update(doctype='Quotation', pos_profile='Inclusive Till', payments=[])
+        submit_quote = Mock(return_value={'name': 'QTN-RECOVERED', 'status': 1})
+        module = SimpleNamespace(submit_quotation=submit_quote)
+        with patch.dict(sys.modules, {'posawesome.posawesome.api.quotations': module}):
+            result = self.env['_submit_offline_order_type'](dict(self.invoice), {}, 'quote-request')
+        payload = json.loads(submit_quote.call_args.args[0])
+        self.assertEqual(payload['pos_profile'], 'Inclusive Till')
+        self.assertEqual(result['doctype'], 'Quotation')
+        self.env['_get_or_create_submission_ledger'].assert_called_once_with(
+            'quote-request', dict(self.invoice, transaction_date='2026-10-27'), {}, 'Quotation')
+
+    def test_offline_quote_cannot_silently_discard_a_cash_payment(self):
+        self.invoice['doctype'] = 'Quotation'
+        with patch.dict(sys.modules, {'posawesome.posawesome.api.quotations': SimpleNamespace(submit_quotation=Mock())}):
+            with self.assertRaisesRegex(ValueError, 'cannot record a payment'):
+                self.env['_submit_offline_order_type'](self.invoice, {}, 'quote-request')
+        self.env['_get_or_create_submission_ledger'].assert_not_called()
+
     def test_submission_dispatches_before_invoice_conversion(self):
         dispatch=Mock(return_value={'name':'SO-RECOVERED'})
-        self.env['_submit_offline_sales_order']=dispatch
+        self.env['_submit_offline_order_type']=dispatch
         self.env['extract_invoice_client_request_id']=Mock(return_value='original-request')
         result=self.env['submit_invoice'](json.dumps(self.invoice),'{}')
         self.assertEqual(result['name'],'SO-RECOVERED')

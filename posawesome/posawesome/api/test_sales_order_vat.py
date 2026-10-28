@@ -8,12 +8,13 @@ import unittest
 from unittest.mock import Mock, patch
 
 
-def functions(filename):
+def functions(filename, env=None):
     path = Path(__file__).with_name(filename)
     nodes = [n for n in ast.parse(path.read_text()).body if isinstance(n, ast.FunctionDef)]
     for node in nodes:
         node.decorator_list = []
-    env = {"json": json, "cint": lambda x: int(x or 0), "flt": lambda x, p=None: round(float(x or 0), p) if p is not None else float(x or 0)}
+    env = {} if env is None else env
+    env.update({"json": json, "cint": lambda x: int(x or 0), "flt": lambda x, p=None: round(float(x or 0), p) if p is not None else float(x or 0)})
     exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), "exec"), env)
     return env
 
@@ -68,6 +69,13 @@ class TaxRowsTest(unittest.TestCase):
         self.assertEqual(order.taxes_and_charges, 'Regular')
         self.assertEqual([t['included_in_print_rate'] for t in order.taxes], [1, 0])
 
+    def test_empty_pos_quotation_loads_tax_rows_and_preserves_gross_prices(self):
+        quote = self.order()
+        quote.doctype = 'Quotation'
+        self.env['apply_pos_tax_inclusion_contract'](quote)
+        self.assertEqual(quote.taxes[0]['included_in_print_rate'], 1)
+        self.load.assert_called_once()
+
     def test_order_specific_template_takes_precedence(self):
         order = self.order(taxes_and_charges='Customer template')
         self.env['apply_pos_tax_inclusion_contract'](order)
@@ -106,7 +114,9 @@ class TaxRowsTest(unittest.TestCase):
 
 class RepairTest(unittest.TestCase):
     def setUp(self):
-        self.env = functions('sales_orders.py')
+        self.env = functions('tax_contracts.py')
+        functions('sales_orders.py', self.env)
+        self.env['_check_inclusive_order_total'] = self.env['check_pos_inclusive_total']
         self.original = {'doctype': 'Sales Order', 'pos_profile': 'Till', 'customer': 'Customer',
                          'company': 'Shop', 'grand_total': 118, 'taxes': [],
                          'items': [{'item_code': 'A', 'qty': 1, 'rate': 118}]}

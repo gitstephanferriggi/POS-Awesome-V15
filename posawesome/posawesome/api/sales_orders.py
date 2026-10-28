@@ -7,7 +7,10 @@ import frappe
 from frappe.utils import cint, flt, getdate, nowdate
 
 from posawesome.posawesome.api.payment_entry import create_payment_entry
-from posawesome.posawesome.api.tax_contracts import apply_pos_tax_inclusion_contract
+from posawesome.posawesome.api.tax_contracts import (
+    apply_pos_tax_inclusion_contract,
+    check_pos_inclusive_total as _check_inclusive_order_total,
+)
 
 
 def _payment_entry_job(order_name, payments):
@@ -172,18 +175,6 @@ def submit_sales_order(order, payment_posting_date=None):
 
     return {"name": so_doc.name, "status": so_doc.docstatus}
 
-
-def _check_inclusive_order_total(doc, expected_total):
-    if expected_total is None or not doc.get("pos_profile"):
-        return
-    if not cint(frappe.get_cached_value("POS Profile", doc.pos_profile, "posa_tax_inclusive")):
-        return
-    precision = doc.precision("grand_total")
-    if flt(doc.grand_total, precision) != flt(expected_total, precision):
-        frappe.throw(
-            "VAT-inclusive order total changed during tax calculation. "
-            "The order and payment were not submitted."
-        )
 
 
 @frappe.whitelist(methods=["POST"])

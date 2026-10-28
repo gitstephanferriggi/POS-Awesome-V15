@@ -3,6 +3,8 @@ import json
 import frappe
 from frappe.utils import getdate
 
+from posawesome.posawesome.api.tax_contracts import apply_pos_tax_inclusion_contract, check_pos_inclusive_total
+
 
 def _map_delivery_dates(data):
     """Ensure mandatory delivery_date fields are populated."""
@@ -127,7 +129,9 @@ def update_quotation(data):
     doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
     doc.docstatus = 0
+    apply_pos_tax_inclusion_contract(doc)
     doc.save()
+    check_pos_inclusive_total(doc, data.get("grand_total"))
     return doc
 
 
@@ -145,7 +149,10 @@ def submit_quotation(order):
 
     doc.flags.ignore_permissions = True
     frappe.flags.ignore_account_permission = True
+    apply_pos_tax_inclusion_contract(doc)
     doc.save()
+    check_pos_inclusive_total(doc, order.get("grand_total"))
     doc.submit()
+    check_pos_inclusive_total(doc, order.get("grand_total"))
 
     return {"name": doc.name, "status": doc.docstatus}

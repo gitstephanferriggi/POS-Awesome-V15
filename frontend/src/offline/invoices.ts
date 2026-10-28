@@ -395,7 +395,7 @@ export async function syncOfflineInvoices() {
 					entry.last_attempt_at,
 				);
 			} catch (error) {
-				if (queuedInvoice.invoice?.doctype === "Sales Order") {
+				if (["Sales Order", "Quotation"].includes(queuedInvoice.invoice?.doctype)) {
 					await markWriteQueueEntryFailed(
 						INVOICE_ENTITY,
 						Number(entry.queue_id),

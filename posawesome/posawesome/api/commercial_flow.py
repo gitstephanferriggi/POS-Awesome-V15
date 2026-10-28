@@ -347,7 +347,9 @@ def prepare_document_flow_action(
         update_stock = 1
         fulfillment_mode = "direct_invoice"
 
-    if action in {"order_to_invoice", "quote_to_invoice", "delivery_to_invoice"}:
+    if action in {
+        "quote_to_order", "order_to_delivery_note", "order_to_invoice", "quote_to_invoice", "delivery_to_invoice"
+    }:
         apply_pos_tax_inclusion_contract(mapped_doc, source_doc=source_doc)
 
     prepared_doc = _prepare_mapped_doc(mapped_doc, target_doctype)

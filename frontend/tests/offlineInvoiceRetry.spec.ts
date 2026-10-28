@@ -24,17 +24,17 @@ describe("explicit stopped invoice recovery", () => {
 		localStorage.clear();
 		(globalThis as any).frappe = { call: vi.fn() };
 	});
-	async function seed() {
+	async function seed(doctype = "Sales Order") {
 		await saveOfflineInvoice({
 			invoice: {
-				doctype: "Sales Order",
+				doctype,
 				customer: "CUST-TEST",
 				company: "Shop",
 				pos_profile: "Shop POS",
 				posa_client_request_id: "original-id",
 				posting_date: "2026-10-27",
 				grand_total: 962.67,
-				payments: [{ mode_of_payment: "Cash", amount: 962.67 }],
+				payments: doctype === "Quotation" ? [] : [{ mode_of_payment: "Cash", amount: 962.67 }],
 				items: [{ item_code: "PLANT", qty: 1 }],
 			},
 			data: { idempotency_key: "original-id" },
@@ -96,8 +96,8 @@ describe("explicit stopped invoice recovery", () => {
 			(await db.table("invoice_outbox").get(out.outbox_id)).status,
 		).toBe("acknowledged");
 	});
-	it("keeps failed order/deposit queued rather than acknowledging a fallback draft", async () => {
-		const row = await seed();
+	it.each(["Sales Order", "Quotation"])("keeps failed %s queued rather than acknowledging a fallback draft", async (doctype) => {
+		const row = await seed(doctype);
 		await retryOfflineInvoice(row.queue_id);
 		const call = (globalThis as any).frappe.call;
 		call.mockRejectedValue(new Error("Deposit failed"));
