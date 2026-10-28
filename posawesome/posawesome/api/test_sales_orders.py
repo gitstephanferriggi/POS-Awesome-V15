@@ -44,6 +44,7 @@ class SalesOrderRegressionTest(unittest.TestCase):
                               save=Mock(), submit=Mock())
         env['frappe'] = SimpleNamespace(get_doc=Mock(return_value=doc), flags=SimpleNamespace())
         env['apply_pos_tax_inclusion_contract'] = Mock()
+        env['_check_inclusive_order_total'] = Mock()
         payment = Mock()
         env['_create_payment_entries'] = payment
         payload = json.dumps({'payments': [{'amount': 10}], 'items': []})

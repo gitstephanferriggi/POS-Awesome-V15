@@ -4,7 +4,7 @@
 import json
 
 import frappe
-from frappe.utils import getdate, nowdate
+from frappe.utils import cint, flt, getdate, nowdate
 
 from posawesome.posawesome.api.payment_entry import create_payment_entry
 from posawesome.posawesome.api.tax_contracts import apply_pos_tax_inclusion_contract
@@ -158,7 +158,9 @@ def submit_sales_order(order, payment_posting_date=None):
     frappe.flags.ignore_account_permission = True
     apply_pos_tax_inclusion_contract(so_doc)
     so_doc.save()
+    _check_inclusive_order_total(so_doc, order.get("grand_total"))
     so_doc.submit()
+    _check_inclusive_order_total(so_doc, order.get("grand_total"))
 
     # Keep the deposit and order in the same request transaction. Any payment
     # failure rolls back the order; printing begins only after both are saved.
@@ -169,3 +171,85 @@ def submit_sales_order(order, payment_posting_date=None):
             _create_payment_entries(so_doc, payments)
 
     return {"name": so_doc.name, "status": so_doc.docstatus}
+
+
+def _check_inclusive_order_total(doc, expected_total):
+    if expected_total is None or not doc.get("pos_profile"):
+        return
+    if not cint(frappe.get_cached_value("POS Profile", doc.pos_profile, "posa_tax_inclusive")):
+        return
+    precision = doc.precision("grand_total")
+    if flt(doc.grand_total, precision) != flt(expected_total, precision):
+        frappe.throw(
+            "VAT-inclusive order total changed during tax calculation. "
+            "The order and payment were not submitted."
+        )
+
+
+@frappe.whitelist(methods=["POST"])
+def repair_offline_sales_order_vat(sales_order, apply=0):
+    """Preview or repair only an unfulfilled offline order with missing tax rows.
+
+    Sales Orders have no general-ledger entries. Keep the submitted order and
+    its existing advance; record an audit comment instead of cancelling either.
+    """
+    frappe.only_for("System Manager")
+    doc = frappe.get_doc("Sales Order", sales_order, for_update=True)
+    doc.check_permission("write")
+    if doc.docstatus != 1 or doc.status in ("Closed", "On Hold"):
+        frappe.throw("Only an open submitted Sales Order can be repaired.")
+    for child in ("Sales Invoice Item", "Delivery Note Item"):
+        if frappe.db.exists(child, {"sales_order": sales_order, "docstatus": ["!=", 2]}):
+            frappe.throw("An invoice or delivery already references this order; review it before repairing VAT.")
+    ledger_name = frappe.db.get_value(
+        "POS Invoice Submission Ledger",
+        {"document_type": "Sales Order", "invoice_name": sales_order, "state": "POST_SUBMIT_DONE"},
+        "name",
+    )
+    if not ledger_name:
+        frappe.throw("The original offline submission ledger is required.")
+    ledger = frappe.get_doc("POS Invoice Submission Ledger", ledger_name)
+    original = json.loads(ledger.invoice_payload)
+    profile = original.get("pos_profile")
+    if original.get("doctype") != "Sales Order" or original.get("taxes") or not profile:
+        frappe.throw("This repair is only for offline Sales Orders originally saved without tax rows.")
+    if original.get("company") != doc.company or original.get("customer") != doc.customer:
+        frappe.throw("The order no longer matches its original offline transaction.")
+    if not cint(frappe.get_cached_value("POS Profile", profile, "posa_tax_inclusive")):
+        frappe.throw("The original POS Profile must use VAT-inclusive prices.")
+
+    def item_values(items):
+        return [(i.get("item_code"), flt(i.get("qty")), flt(i.get("rate"), 6)) for i in items]
+
+    if item_values(original.get("items", [])) != item_values(doc.items):
+        frappe.throw("The order items have changed; review VAT manually.")
+    original_total = original.get("grand_total")
+    if original_total is None or flt(doc.grand_total, 2) != flt(original_total, 2):
+        frappe.throw("The order total no longer matches the original amount.")
+    if doc.taxes:
+        frappe.throw("This order already has tax rows; no repair was applied.")
+    before = {k: doc.get(k) for k in ("net_total", "total_taxes_and_charges", "grand_total", "advance_paid")}
+    doc.pos_profile = profile
+    apply_pos_tax_inclusion_contract(doc, recalculate=False)
+    if not doc.taxes:
+        frappe.throw("No tax rows were found in the POS Profile tax template.")
+    doc.calculate_taxes_and_totals()
+    _check_inclusive_order_total(doc, original_total)
+    result = {
+        "name": doc.name,
+        "before": before,
+        "after": {k: doc.get(k) for k in before},
+        "applied": bool(cint(apply)),
+    }
+    if cint(apply):
+        doc.flags.ignore_validate_update_after_submit = True
+        doc.save()
+        _check_inclusive_order_total(doc, original_total)
+        if flt(doc.advance_paid, 2) != flt(before["advance_paid"], 2):
+            frappe.throw("The existing advance changed; VAT repair was rolled back.")
+        doc.add_comment(
+            "Comment",
+            "Restored inclusive VAT from the original offline submission; "
+            "order total and existing cash advance unchanged. " + json.dumps(result),
+        )
+    return result

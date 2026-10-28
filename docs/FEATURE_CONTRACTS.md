@@ -132,6 +132,10 @@ Rules:
 
 Offline Sales Orders use the existing Sales Order/deposit submission flow rather than invoice payment-row conversion. The order and its advances are saved in one transaction; the original posting date becomes the order/payment date. The submission ledger serializes retries by the original request ID so an uncertain response cannot duplicate the order or cash advance. Ordinary online order/payment dates keep their existing defaults.
 
+POS Sales Orders persist their POS Profile. When an old offline payload has no document tax rows, populate them from the order/profile tax template and apply the profile’s inclusive flags before ERPNext calculates totals. Item tax templates supply the VAT rates. Submission rejects an inclusive total that differs from the till’s saved grand total. Persisted tax rows and their inclusion flags must survive standard ERPNext and POS order-to-invoice mapping.
+
+A System Manager can preview/apply a missing-VAT repair only for an open, unfulfilled order backed by the original completed offline ledger. The repair verifies the original company/customer/items/prices/total, refuses existing tax rows or linked invoices/deliveries, retains the cash advance, and adds an audit comment. It never creates another order or payment.
+
 A failed Sales Order must remain queued; saving a draft is not confirmation of its cash advance. Stopped queue entries require an explicit per-entry retry with confirmation. Retry preserves the payload/request ID and aligns the legacy queue with the optional coordinator outbox; an acknowledged transaction is not resubmitted. The Offline Invoices dialog shows the stored error and stopped status. Preserve/export the local queue before attempting recovery; do not recreate the sale from a printed chit alone.
 
 ## 5. Printing Contract

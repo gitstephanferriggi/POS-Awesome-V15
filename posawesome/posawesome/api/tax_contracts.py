@@ -68,6 +68,28 @@ def apply_pos_tax_inclusion_contract(doc, source_doc=None, recalculate=True):
         return False
 
     changed = False
+    # Offline orders can carry item tax templates but no document tax rows.
+    # ERPNext only extracts inclusive VAT when these rows exist before validation.
+    if _get_value(doc, "doctype") == "Sales Order" and not _tax_rows(doc):
+        from erpnext.controllers.accounts_controller import get_taxes_and_charges
+
+        profile_company = frappe.get_cached_value("POS Profile", pos_profile, "company")
+        if profile_company != _get_value(doc, "company"):
+            frappe.throw("The POS Profile company must match the Sales Order company.")
+        template = _get_value(doc, "taxes_and_charges") or frappe.get_cached_value(
+            "POS Profile", pos_profile, "taxes_and_charges"
+        )
+        if template:
+            if frappe.get_cached_value("Sales Taxes and Charges Template", template, "company") != profile_company:
+                frappe.throw("The tax template company must match the POS Profile company.")
+            _set_value(doc, "taxes_and_charges", template)
+            rows = get_taxes_and_charges("Sales Taxes and Charges Template", template) or []
+            if isinstance(doc, dict):
+                doc["taxes"] = rows
+            else:
+                doc.set("taxes", rows)
+            changed = bool(rows)
+
     for tax in _tax_rows(doc):
         charge_type = str(_get_value(tax, "charge_type", "") or "").strip()
         next_value = 0 if charge_type == "Actual" else 1 if inclusive else 0
@@ -80,3 +102,8 @@ def apply_pos_tax_inclusion_contract(doc, source_doc=None, recalculate=True):
         calculate()
 
     return changed
+
+
+def validate_pos_sales_order(doc, method=None):
+    # Sales Order validation calculates totals after this hook, using these flags.
+    apply_pos_tax_inclusion_contract(doc, recalculate=False)

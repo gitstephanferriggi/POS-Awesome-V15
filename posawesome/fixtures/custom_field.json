@@ -8530,5 +8530,19 @@
 		"unique": 1,
 		"insert_after": "reference_no",
 		"name": "Payment Entry-posa_client_request_id"
+	},
+	{
+		"doctype": "Custom Field",
+		"dt": "Sales Order",
+		"name": "Sales Order-pos_profile",
+		"fieldname": "pos_profile",
+		"label": "POS Profile",
+		"fieldtype": "Link",
+		"options": "POS Profile",
+		"insert_after": "taxes_and_charges",
+		"read_only": 1,
+		"print_hide": 1,
+		"no_copy": 0,
+		"is_system_generated": 1
 	}
 ]
