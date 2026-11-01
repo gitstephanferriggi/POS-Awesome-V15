@@ -121,7 +121,7 @@ export function usePaymentMethods(options: PaymentMethodsOptions) {
 		if (!doc || !doc.payments) return;
 
 		doc.payments.forEach((payment: any) => {
-			if (payment.mode_of_payment.toLowerCase() === "cash") {
+			if (isCashLikePayment(payment)) {
 				payment.amount = 0;
 			}
 		});

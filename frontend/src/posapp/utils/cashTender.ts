@@ -34,7 +34,8 @@ export const isCashLikePaymentLine = (
 	const mode = String(payment.mode_of_payment || "").toLowerCase();
 	if (configuredCashMOP && mode === configuredCashMOP) return true;
 
-	return mode.includes("cash");
+	if (type) return false;
+	return /(?:^|\s)cash(?:$|\s)/.test(mode) || mode.includes("money") || mode.includes("نقدي");
 };
 
 export const normalizeProfilePaymentLines = (

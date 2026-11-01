@@ -1,4 +1,5 @@
 import { unref, type Ref, type ComputedRef } from "vue";
+import { isCashLikePaymentLine } from "../../../utils/cashTender";
 import invoiceService from "../../../services/invoiceService";
 import { isApiEnvelopeError, unwrapApiResult } from "../../../services/api";
 import {
@@ -578,7 +579,7 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			if (doc.payments) {
 				doc.payments.forEach((payment: any) => {
 					if (
-						payment.mode_of_payment.toLowerCase().includes("cash")
+						isCashLikePaymentLine(payment, profile)
 					) {
 						has_cash_payment = true;
 						cash_amount = formatFloat(payment.amount, prec);
@@ -884,26 +885,9 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			const paidRows = doc.payments.filter(
 				(payment: any) => formatFloat(payment?.amount || 0, prec) > 0,
 			);
-			const hasCashPaid = paidRows.some((payment: any) => {
-				const mode = String(
-					payment?.mode_of_payment || "",
-				).toLowerCase();
-				const type = String(payment?.type || "").toLowerCase();
-				if (type === "cash") return true;
-				if (configuredCashMop && mode === configuredCashMop)
-					return true;
-				return mode.includes("cash");
-			});
-			const hasNonCashPaid = paidRows.some((payment: any) => {
-				const mode = String(
-					payment?.mode_of_payment || "",
-				).toLowerCase();
-				const type = String(payment?.type || "").toLowerCase();
-				if (type === "cash") return false;
-				if (configuredCashMop && mode === configuredCashMop)
-					return false;
-				return !mode.includes("cash");
-			});
+			const cashProfile = { posa_cash_mode_of_payment: configuredCashMop };
+			const hasCashPaid = paidRows.some((payment: any) => isCashLikePaymentLine(payment, cashProfile));
+			const hasNonCashPaid = paidRows.some((payment: any) => !isCashLikePaymentLine(payment, cashProfile));
 
 			if (hasNonCashPaid && !hasCashPaid) {
 				pChange = formatFloat(changeLimit, prec);

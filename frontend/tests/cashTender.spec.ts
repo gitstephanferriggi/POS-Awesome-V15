@@ -85,3 +85,15 @@ describe("cash tender helpers", () => {
 		expect(getSmartTenderSuggestionsMock).not.toHaveBeenCalled();
 	});
 });
+
+
+describe("JYSK cash and voucher separation", () => {
+ it("does not treat D365 CashBack vouchers as cash even without type metadata", () => {
+  expect(isCashLikePaymentLine({mode_of_payment: "JYSK CashBack (Lija)", type: "General"})).toBe(false);
+  expect(isCashLikePaymentLine({mode_of_payment: "JYSK CashBack (Lija)"})).toBe(false);
+ });
+ it("recognizes configured store cash while respecting explicit noncash types", () => {
+  expect(isCashLikePaymentLine({mode_of_payment: "JYSK Cash (Lija)"}, {posa_cash_mode_of_payment: "JYSK Cash (Lija)"})).toBe(true);
+  expect(isCashLikePaymentLine({mode_of_payment: "Cash Management Card", type: "Bank"})).toBe(false);
+ });
+});

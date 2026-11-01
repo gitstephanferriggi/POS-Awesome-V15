@@ -1,4 +1,5 @@
 import { computed, unref, type Ref } from "vue";
+import { isCashLikePaymentLine } from "../../../utils/cashTender";
 import { formatUtils } from "../../../format";
 import { fromCompanyCurrency } from "../../../utils/erpnextCurrency";
 import { isPosOrderTypeDocument } from "../../../utils/posDocumentMode";
@@ -196,14 +197,8 @@ export function usePaymentCalculations(options: PaymentCalculationOptions) {
 		return change > 0 ? change : 0;
 	});
 
-	const isCashLikePayment = (payment: any) => {
-		const mop = payment?.mode_of_payment?.toLowerCase() || "";
-		return (
-			mop.includes("cash") ||
-			mop.includes("money") ||
-			mop.includes("نقدي")
-		);
-	};
+	const isCashLikePayment = (payment: any) =>
+		isCashLikePaymentLine(payment, unref(posProfile));
 
 	const shouldAutoApplyCreditChange = computed(() => {
 		const doc = unref(invoiceDoc);
