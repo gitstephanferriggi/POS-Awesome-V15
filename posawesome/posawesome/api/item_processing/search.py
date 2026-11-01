@@ -440,6 +440,12 @@ def _run_item_query(
         candidates.sort(key=lambda row: (-float(quantities.get(row["item_code"], 0)), row["item_code"]))
         result_offset = plan.initial_page_start
         result_limit = result_offset + plan.limit_page_length if plan.limit_page_length else None
+        # Without post-enrichment filtering, the ranked page is already known.
+        # Do not fetch prices/UOMs/stock details for every preceding page again.
+        if not plan.word_filter_active and not plan.posa_display_items_in_stock:
+            candidates = candidates[result_offset:result_limit]
+            result_offset = 0
+            result_limit = plan.limit_page_length
     page_start = 0 if candidates is not None else plan.initial_page_start
 
     while True:

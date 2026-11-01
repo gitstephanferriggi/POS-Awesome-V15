@@ -56,11 +56,7 @@ def get_bulk_stock_availability(items):
         return {}
 
     if "jysk_malta" in frappe.get_installed_apps():
-        return {(d["item_code"], d["warehouse"], cstr(d.get("batch_no"))):
-                min(get_stock_availability(d["item_code"], d["warehouse"]),
-                    flt(get_batch_qty(d["batch_no"], d["warehouse"]))) if d.get("batch_no")
-                else get_stock_availability(d["item_code"], d["warehouse"])
-                for d in items if d.get("item_code") and d.get("warehouse")}
+        return _get_jysk_bulk_stock_availability(items)
 
     # Separate items
     regular_items_map = {}  # (warehouse) -> set(item_code)
@@ -123,6 +119,43 @@ def get_bulk_stock_availability(items):
         for code in item_codes:
             results[(code, warehouse, "")] = qty_map.get(code, 0.0)
 
+    return results
+
+
+def _get_jysk_bulk_stock_availability(items):
+    """Read each warehouse once through JYSK's live reservation-aware API.
+
+    Catalogue ranking can request thousands of items. Calling the single-item
+    API for every code turns every page into thousands of database round trips.
+    Keep JYSK's blind-stock protection and availability calculation as the source
+    of truth; only batch how that existing API is read.
+    """
+    from jysk_malta.api.stock import get_availability
+
+    requested = {(d["item_code"], d["warehouse"], cstr(d.get("batch_no")))
+                 for d in items if d.get("item_code") and d.get("warehouse")}
+    codes = {code for code, _, _ in requested}
+    targets = {}
+    for warehouse in sorted({warehouse for _, warehouse, _ in requested}):
+        targets[warehouse] = (
+            frappe.db.get_descendants("Warehouse", warehouse) or []
+            if frappe.db.get_value("Warehouse", warehouse, "is_group")
+            else [warehouse]
+        )
+    quantities = {}
+    for leaf in sorted({leaf for leaves in targets.values() for leaf in leaves}):
+        kwargs = {"warehouse": leaf}
+        if len(codes) == 1:
+            kwargs["item_code"] = next(iter(codes))
+        for row in get_availability(**kwargs):
+            if row["item_code"] in codes:
+                quantities[(row["item_code"], leaf)] = flt(row["available_qty"])
+    results = {}
+    for code, warehouse, batch in requested:
+        available = sum(quantities.get((code, leaf), 0.0) for leaf in targets[warehouse])
+        results[(code, warehouse, batch)] = (
+            min(available, flt(get_batch_qty(batch, warehouse))) if batch else available
+        )
     return results
 
 

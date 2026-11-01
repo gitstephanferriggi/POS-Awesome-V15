@@ -195,6 +195,27 @@ class TestItemSearchSerialization(unittest.TestCase):
         self.assertFalse(plan.stock_sort)
         self.assertEqual(plan.order_by, "item_code asc")
 
+    def test_deep_stock_page_only_enriches_the_requested_page(self):
+        from unittest.mock import patch
+        rows = [{"item_code": f"ITEM-{i:05}", "item_name": f"Item {i}"} for i in range(10000)]
+        plan = self.module._build_search_plan(
+            {}, "", "", 200, 8000, None, None, None, False, False, None)
+        enriched = []
+        def details(profile, payload, **kwargs):
+            enriched.extend(json.loads(payload))
+            return []
+        with patch.object(self.module.frappe, "get_all", return_value=rows), \
+             patch.object(self.module, "get_bin_qty", return_value=[
+                 {"item_code": r["item_code"], "actual_qty": i} for i, r in enumerate(rows)]), \
+             patch.object(self.module, "get_items_details", side_effect=details), \
+             patch.object(self.module, "_build_attribute_maps", return_value=({}, {})), \
+             patch.object(self.module, "_shape_item_row", side_effect=lambda item, *args, **kwargs: item), \
+             patch.object(self.module, "_matches_search_words", return_value=True):
+            result = self.module._run_item_query({"warehouse": "LIJA"}, None, None, plan)
+        self.assertEqual(len(enriched), 200)
+        self.assertEqual([r["item_code"] for r in result],
+                         [f"ITEM-{i:05}" for i in range(1999, 1799, -1)])
+
     def test_hot_catalog_limit_is_bounded(self):
         self.assertEqual(self.module._coerce_hot_catalog_limit(None), 5000)
         self.assertEqual(self.module._coerce_hot_catalog_limit(50), 100)
