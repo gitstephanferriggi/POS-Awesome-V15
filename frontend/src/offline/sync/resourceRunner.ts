@@ -242,6 +242,9 @@ export async function runSupportedOfflineSyncResource({
 		case "stock":
 			return syncStockResource({
 				...sharedArgs,
+				// Stock has its own snapshot revision. Keep it after the initial
+				// rebuild instead of repeatedly sending the global manifest revision.
+				schemaVersion: persistedState?.schemaVersion || schemaVersion,
 				fetcher: ({ posProfile, watermark, startAfter, limit, schemaVersion }) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.stock.sync_stock",

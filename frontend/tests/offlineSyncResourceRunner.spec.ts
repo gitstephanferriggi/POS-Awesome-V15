@@ -257,4 +257,22 @@ describe("offline sync resource runner", () => {
 			}),
 		);
 	});
+
+	it("retains the stock snapshot revision and forwards every stock page cursor", async () => {
+		const callOfflineSyncMethod = vi.fn(async () => ({ changes: [], has_more: false }));
+		await runSupportedOfflineSyncResource({
+			resource: { id: "stock" } as any,
+			posProfile: { name: "POS-1", warehouse: "Lija" },
+			schemaVersion: "2026-04-09",
+			getPersistedState: vi.fn(async () => ({ resourceId: "stock", status: "fresh", watermark: "2026-10-29", schemaVersion: "2026-11-01" } as any)),
+			callOfflineSyncMethod,
+		});
+		const args = adapterMocks.syncStockResource.mock.calls[0][0];
+		expect(args.schemaVersion).toBe("2026-11-01");
+		await args.fetcher({ posProfile: { name: "POS-1" }, watermark: "2026-10-29", startAfter: "P001000", limit: 1000, schemaVersion: args.schemaVersion });
+		expect(callOfflineSyncMethod).toHaveBeenCalledWith(
+			"posawesome.posawesome.api.offline_sync.stock.sync_stock",
+			expect.objectContaining({ start_after: "P001000", limit: 1000, schema_version: "2026-11-01", watermark: "2026-10-29" }),
+		);
+	});
 });
