@@ -82,6 +82,51 @@ import { syncCustomersResource } from "../src/offline/sync/adapters/customers";
 import { syncItemsResource } from "../src/offline/sync/adapters/items";
 import { syncStockResource } from "../src/offline/sync/adapters/stock";
 
+describe("complete stock snapshot pagination", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		syncStateMocks.getSyncResourceState.mockResolvedValue(null);
+	});
+	const profile = { name: "POS-1", warehouse: "Main WH" };
+	const page = (code: string, more: boolean, stamp: string) => ({
+		changes: [{ key: `stock::${code}`, data: { item_code: code, actual_qty: 5 } }],
+		has_more: more, next_watermark: stamp, schema_version: "2026-11-01",
+	});
+	it("downloads every page before marking stock ready and keeps the maximum watermark", async () => {
+		const fetcher = vi.fn(async ({ startAfter, watermark }) => {
+			expect(watermark).toBe("2026-09-01");
+			expect(stockMocks.setStockCacheReady).not.toHaveBeenCalledWith(true);
+			return startAfter ? page("B", false, "2026-10-01") : page("A", true, "2026-10-29");
+		});
+		const result = await syncStockResource({ posProfile: profile, watermark: "2026-09-01", fetcher });
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(fetcher.mock.calls[1][0]).toEqual(expect.objectContaining({ startAfter: "A", limit: 1000 }));
+		expect(stockMocks.updateLocalStockCache).toHaveBeenCalledTimes(2);
+		expect(stockMocks.setStockCacheReady).toHaveBeenLastCalledWith(true);
+		expect(result.watermark).toBe("2026-10-29");
+	});
+	it("does not advance state or mark partial downloads ready when a later page fails", async () => {
+		const fetcher = vi.fn().mockResolvedValueOnce(page("A", true, "new")).mockRejectedValueOnce(new Error("network lost"));
+		await expect(syncStockResource({ posProfile: profile, watermark: "old", fetcher })).rejects.toThrow("network lost");
+		expect(stockMocks.setStockCacheReady).not.toHaveBeenCalledWith(true);
+		expect(stockMocks.setStockCacheReady).toHaveBeenLastCalledWith(false);
+		expect(syncStateMocks.setSyncResourceState).not.toHaveBeenCalled();
+	});
+	it("rebuilds an older incomplete cache after a schema mismatch without reusing its watermark", async () => {
+		const fetcher = vi.fn().mockResolvedValueOnce({ full_resync_required: true }).mockResolvedValueOnce(page("A", false, "new"));
+		await syncStockResource({ posProfile: profile, watermark: "old", schemaVersion: "2026-04-09", fetcher });
+		expect(fetcher.mock.calls[1][0]).toEqual(expect.objectContaining({ watermark: null, schemaVersion: null, startAfter: null }));
+		expect(stockMocks.clearLocalStockCache).toHaveBeenCalledOnce();
+		expect(stockMocks.setStockCacheReady).toHaveBeenLastCalledWith(true);
+	});
+	it("rejects repeated pagination cursors without marking stock fresh", async () => {
+		const fetcher = vi.fn(async () => page("A", true, "new"));
+		await expect(syncStockResource({ posProfile: profile, fetcher })).rejects.toThrow("cursor did not advance");
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(stockMocks.setStockCacheReady).not.toHaveBeenCalledWith(true);
+	});
+});
+
 describe("operational offline sync adapters", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

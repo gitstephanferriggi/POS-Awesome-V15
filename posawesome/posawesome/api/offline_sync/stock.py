@@ -8,7 +8,11 @@ from posawesome.posawesome.api.offline_sync.common import (
     _resolve_profile,
 )
 
-SYNC_SCHEMA_VERSION = "2026-04-09"
+SYNC_SCHEMA_VERSION = "2026-11-01"
+
+
+def _stock_response(**kwargs):
+    return {**_build_response(**kwargs), "schema_version": SYNC_SCHEMA_VERSION}
 
 
 def _coerce_limit(value, default=200, maximum=2000):
@@ -48,7 +52,8 @@ def _collect_stock_rows(profile, watermark, start_after, limit):
         frappe.get_all(
             "Bin",
             filters=filters,
-            fields=["item_code", "modified"],
+            fields=["item_code", "max(modified) as modified"],
+            group_by="item_code",
             order_by="item_code asc",
             limit_page_length=limit,
         )
@@ -75,7 +80,7 @@ def sync_stock(
     schema_version=None,
 ):
     if schema_version and schema_version != SYNC_SCHEMA_VERSION:
-        return _build_response(full_resync_required=True)
+        return _stock_response(full_resync_required=True)
 
     profile = _resolve_profile(pos_profile)
     if not profile:
@@ -119,7 +124,7 @@ def sync_stock(
         watermark,
         [row.get("modified") for row in rows],
     )
-    return _build_response(
+    return _stock_response(
         changes=changes,
         deleted=[],
         next_watermark=next_watermark,

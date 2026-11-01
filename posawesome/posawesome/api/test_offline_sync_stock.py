@@ -122,6 +122,18 @@ class TestOfflineSyncStock(unittest.TestCase):
         self.assertIn("next_watermark", response)
         self.assertIn("has_more", response)
 
+    def test_old_partial_snapshot_schema_requests_a_full_rebuild(self):
+        response = self.module.sync_stock(pos_profile="POS-TEST", schema_version="2026-04-09")
+        self.assertTrue(response['full_resync_required'])
+        self.assertEqual(response['schema_version'], self.module.SYNC_SCHEMA_VERSION)
+
+    def test_warehouse_group_rows_are_grouped_before_the_page_limit(self):
+        from unittest.mock import patch
+        with patch.object(self.module.frappe,'get_all',return_value=[]) as fetch:
+            self.module._collect_stock_rows({'warehouse':'Group'},None,None,201)
+        self.assertEqual(fetch.call_args.kwargs['group_by'],'item_code')
+        self.assertEqual(fetch.call_args.kwargs['fields'],['item_code','max(modified) as modified'])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -242,12 +242,14 @@ export async function runSupportedOfflineSyncResource({
 		case "stock":
 			return syncStockResource({
 				...sharedArgs,
-				fetcher: ({ posProfile, watermark, schemaVersion }) =>
+				fetcher: ({ posProfile, watermark, startAfter, limit, schemaVersion }) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.stock.sync_stock",
 						{
 							pos_profile: posProfile,
 							watermark,
+							start_after: startAfter || null,
+							limit: limit || null,
 							schema_version: schemaVersion,
 						},
 					),
