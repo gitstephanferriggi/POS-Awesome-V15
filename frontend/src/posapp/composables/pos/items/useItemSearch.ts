@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { compareStockDescending } from "../../../utils/itemStockOrder";
 import { perfMarkStart, perfMarkEnd } from "../../../utils/perf.js";
 
 declare const frappe: any;
@@ -196,6 +197,8 @@ export function useItemSearch() {
 		} = {},
 	) => {
 		if (!items || !items.length) return [];
+		// Sort the complete candidate set before any display limit or filtering.
+		items = [...items].sort(compareStockDescending);
 
 		const term = (searchTerm || "").trim().toLowerCase();
 		const needsLocalSearch =

@@ -11,7 +11,7 @@ from frappe.query_builder.functions import Max, Sum
 from frappe.utils import add_days, cint, cstr, get_datetime, nowdate
 from frappe.utils.caching import redis_cache
 
-from posawesome.posawesome.api.item_fetchers import ItemDetailAggregator
+from posawesome.posawesome.api.item_fetchers import ItemDetailAggregator, get_bin_qty
 from posawesome.posawesome.api.utils import (
     HAS_VARIANTS_EXCLUSION,
     expand_item_groups,
@@ -64,6 +64,7 @@ class SearchPlan:
     include_image: bool
     posa_display_items_in_stock: bool
     posa_show_template_items: bool
+    stock_sort: bool = False
 
 
 def normalize_brand(brand: str) -> str:
@@ -237,6 +238,7 @@ def _build_search_plan(
         include_image=include_image,
         posa_display_items_in_stock=bool(posa_display_items_in_stock),
         posa_show_template_items=bool(posa_show_template_items),
+        stock_sort=not (start_after or start_after_item_code is not None or modified_after),
     )
 
 
@@ -415,10 +417,34 @@ def _run_item_query(
     """Execute the search described by ``plan`` and return shaped rows."""
 
     result: List[Dict[str, Any]] = []
-    page_start = plan.initial_page_start
+    # Cursor/delta sync keeps its stable identity ordering. Interactive pages rank
+    # the complete matching catalog using the same warehouse quantity as details.
+    candidates = None
+    result_offset = 0
+    result_limit = plan.limit_page_length
+    if plan.stock_sort:
+        candidates = frappe.get_all(
+            "Item", filters=plan.filters, or_filters=plan.or_filters or None,
+            fields=plan.fields, limit_page_length=0, order_by="item_code asc",
+        )
+        if not candidates and plan.item_code_for_search:
+            candidates = frappe.get_all(
+                "Item", filters=plan.filters,
+                or_filters=[[field, "like", f"%{plan.item_code_for_search}%"]
+                            for field in ("name", "item_name", "item_code")],
+                fields=plan.fields, limit_page_length=0, order_by="item_code asc",
+            )
+        codes = [row["item_code"] for row in candidates]
+        quantities = {row["item_code"]: row.get("actual_qty") or 0
+                      for row in get_bin_qty(pos_profile.get("warehouse"), codes)}
+        candidates.sort(key=lambda row: (-float(quantities.get(row["item_code"], 0)), row["item_code"]))
+        result_offset = plan.initial_page_start
+        result_limit = result_offset + plan.limit_page_length if plan.limit_page_length else None
+    page_start = 0 if candidates is not None else plan.initial_page_start
 
     while True:
-        items_data = frappe.get_all(
+        items_data = (candidates[page_start:page_start + plan.page_size]
+                      if candidates is not None else frappe.get_all(
             "Item",
             filters=plan.filters,
             or_filters=plan.or_filters or None,
@@ -426,9 +452,9 @@ def _run_item_query(
             limit_start=page_start,
             limit_page_length=plan.page_size,
             order_by=plan.order_by,
-        )
+        ))
 
-        if not items_data and plan.item_code_for_search and page_start == plan.initial_page_start:
+        if candidates is None and not items_data and plan.item_code_for_search and page_start == plan.initial_page_start:
             items_data = frappe.get_all(
                 "Item",
                 filters=plan.filters,
@@ -469,17 +495,17 @@ def _run_item_query(
             if not _matches_search_words(row, plan.search_words, plan.word_filter_active):
                 continue
             result.append(row)
-            if plan.limit_page_length and len(result) >= plan.limit_page_length:
+            if result_limit and len(result) >= result_limit:
                 break
 
-        if plan.limit_page_length and len(result) >= plan.limit_page_length:
+        if result_limit and len(result) >= result_limit:
             break
 
         page_start += len(items_data)
         if len(items_data) < plan.page_size:
             break
 
-    return result[: plan.limit_page_length] if plan.limit_page_length else result
+    return result[result_offset:result_limit] if result_limit else result[result_offset:]
 
 
 def _coerce_hot_catalog_limit(limit) -> int:

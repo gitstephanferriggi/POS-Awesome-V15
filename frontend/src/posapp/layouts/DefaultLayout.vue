@@ -83,6 +83,7 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, watch, getCurrentInstance } from "vue";
 // Note paths updated to be relative to layouts/ directory
+import { useOfflineWarningDelay } from "../composables/core/useOfflineWarningDelay";
 import Navbar from "../components/Navbar.vue";
 import ClosingDialog from "../components/pos/shell/ClosingDialog.vue";
 import AppLoadingOverlay from "../components/ui/LoadingOverlay.vue";
@@ -714,17 +715,17 @@ const bootstrapWarningTooltip = computed(() => {
 		.filter(Boolean)
 		.join("\n");
 });
+const offlineWarningsOnlineReady = computed(() =>
+ networkOnline.value && serverOnline.value && !serverConnecting.value && !manualOffline.value,
+);
+const offlineWarningDelayElapsed = useOfflineWarningDelay(offlineWarningsOnlineReady);
 const bootstrapWarningUiState = computed(() =>
 	resolveBootstrapWarningUiState({
-		startupWarningsReady: startupBootstrapWarningsReady.value,
+		startupWarningsReady: startupBootstrapWarningsReady.value && offlineWarningDelayElapsed.value,
 		warningActive: bootstrapWarningActive.value,
 		warningTooltip: bootstrapWarningTooltip.value,
 		capabilitySummaries: bootstrapCapabilitySummaries.value,
-		onlineReady:
-			networkOnline.value &&
-			serverOnline.value &&
-			!serverConnecting.value &&
-			!getIsManualOffline(),
+		onlineReady: offlineWarningsOnlineReady.value,
 	}),
 );
 const visibleBootstrapWarningActive = computed(() => bootstrapWarningUiState.value.active);

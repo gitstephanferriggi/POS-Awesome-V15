@@ -1,4 +1,5 @@
 import { ref } from "vue";
+import { compareStockDescending } from "../../../../utils/itemStockOrder";
 import type { Item, POSProfile } from "../../../../types/models";
 
 export function useItemsSearch() {
@@ -298,7 +299,7 @@ export function useItemsSearch() {
 		itemGroup: string,
 		limit = 50,
 	) => {
-		const matches = performLocalSearch(term, itemList, itemGroup);
+		const matches = [...performLocalSearch(term, itemList, itemGroup)].sort(compareStockDescending);
 		if (!term || !matches.length) {
 			return Number.isFinite(limit) && limit > 0
 				? matches.slice(0, limit)
@@ -315,6 +316,7 @@ export function useItemsSearch() {
 			}))
 			.sort(
 				(left, right) =>
+					compareStockDescending(left.item, right.item) ||
 					right.score - left.score ||
 					left.originalIndex - right.originalIndex,
 			)

@@ -42,6 +42,7 @@ def _install_stubs():
 
     fetchers = types.ModuleType("posawesome.posawesome.api.item_fetchers")
     fetchers.ItemDetailAggregator = object
+    fetchers.get_bin_qty = lambda *args, **kwargs: []
     sys.modules["posawesome.posawesome.api.item_fetchers"] = fetchers
 
     utils = types.ModuleType("posawesome.posawesome.api.utils")
@@ -167,6 +168,32 @@ class TestItemSearchSerialization(unittest.TestCase):
 
         self.assertEqual(plan.order_by, "item_code asc")
         self.assertNotIn("item_code", plan.filters)
+
+    def test_stock_sort_ranks_complete_catalog_before_offset_and_limit(self):
+        from unittest.mock import patch
+        rows = [{"item_code": "A", "item_name": "Alpha"},
+                {"item_code": "B", "item_name": "Zulu"},
+                {"item_code": "C", "item_name": "Beta"}]
+        plan = self.module._build_search_plan(
+            {}, "", "", 1, 1, None, None, None, False, False, None)
+        with patch.object(self.module.frappe, "get_all", return_value=rows), \
+             patch.object(self.module, "get_bin_qty", return_value=[
+                 {"item_code": "A", "actual_qty": 1},
+                 {"item_code": "B", "actual_qty": 100},
+                 {"item_code": "C", "actual_qty": 10}]) as stock, \
+             patch.object(self.module, "get_items_details", return_value=[]), \
+             patch.object(self.module, "_build_attribute_maps", return_value=({}, {})), \
+             patch.object(self.module, "_shape_item_row", side_effect=lambda item, *args, **kwargs: item), \
+             patch.object(self.module, "_matches_search_words", return_value=True):
+            result = self.module._run_item_query({"warehouse": "LIJA"}, None, None, plan)
+        self.assertEqual([r["item_code"] for r in result], ["C"])
+        stock.assert_called_once_with("LIJA", ["A", "B", "C"])
+
+    def test_stock_sort_does_not_change_cursor_sync_order(self):
+        plan = self.module._build_search_plan(
+            {}, "", "", 100, None, None, "", None, False, False, None)
+        self.assertFalse(plan.stock_sort)
+        self.assertEqual(plan.order_by, "item_code asc")
 
     def test_hot_catalog_limit_is_bounded(self):
         self.assertEqual(self.module._coerce_hot_catalog_limit(None), 5000)
