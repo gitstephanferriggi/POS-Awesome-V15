@@ -172,5 +172,14 @@ class TestCustomersApi(unittest.TestCase):
         self.assertIsNone(args["or_filters"])
 
 
+    def test_customer_update_preserves_removed_form_fields(self):
+        customer = SimpleNamespace(name="CUST-001", gender="Existing gender", posa_referral_code="Existing code", posa_birthday="1990-01-01", save=lambda: None)
+        self.module.frappe.get_doc = lambda *args: customer
+        result = self.module.create_customer("Existing customer", "Test Co", "{}", customer_id="CUST-001", method="update")
+        self.assertEqual(result.gender, "Existing gender")
+        self.assertEqual(result.posa_referral_code, "Existing code")
+        self.assertEqual(result.posa_birthday, "1990-01-01")
+
+
 if __name__ == "__main__":
     unittest.main()

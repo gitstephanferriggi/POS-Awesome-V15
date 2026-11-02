@@ -66,13 +66,18 @@
 							</v-col>
 
 							<v-col cols="12" sm="6" v-if="!hideNonEssential">
-								<v-text-field
+								<v-autocomplete
+									v-if="country === 'Malta'"
 									v-model="city"
+									:items="cityOptions(originalCity)"
+									:custom-filter="cityFilter"
+									clearable
 									variant="outlined"
 									density="compact"
 									:label="__('City')"
 									class="pos-themed-input"
-								></v-text-field>
+								></v-autocomplete>
+								<v-text-field v-else v-model="city" :label="__('City')" variant="outlined" density="compact" class="pos-themed-input" />
 							</v-col>
 
 							<v-col cols="12" sm="6" v-if="!hideNonEssential">
@@ -86,7 +91,7 @@
 								></v-select>
 							</v-col>
 
-							<v-col cols="6">
+							<v-col cols="12">
 								<v-text-field
 									density="compact"
 									color="primary"
@@ -94,38 +99,6 @@
 									class="pos-themed-input"
 									hide-details
 									v-model="email_id"
-								></v-text-field>
-							</v-col>
-							<v-col cols="6">
-								<v-select
-									density="compact"
-									:label="__('Gender')"
-									:items="genders"
-									v-model="gender"
-									class="pos-themed-input"
-								></v-select>
-							</v-col>
-							<v-col cols="6">
-								<v-text-field
-									density="compact"
-									color="primary"
-									:label="frappe._('Referral Code')"
-									class="pos-themed-input"
-									hide-details
-									v-model="referral_code"
-								></v-text-field>
-							</v-col>
-							<v-col cols="6">
-								<v-text-field
-									v-model="birthday"
-									:label="frappe._('Birthday (DD-MM-YYYY)')"
-									density="compact"
-									clearable
-									hide-details
-									color="primary"
-									placeholder="DD-MM-YYYY"
-									@update:model-value="formatBirthdayOnInput"
-									class="pos-themed-input"
 								></v-text-field>
 							</v-col>
 							<v-col cols="6" v-if="!hideNonEssential">
@@ -219,11 +192,12 @@
 </template>
 
 <script>
+import { cityOptions, cityFilter, validCity, customerDefaults } from "../../../../utils/maltaLocalities";
 import { isOffline, saveOfflineCustomer } from "../../../../../offline/index";
-import { useCustomersStore } from "../../../../stores/customersStore.js";
-import { useUIStore } from "../../../../stores/uiStore.js";
+import { useCustomersStore } from "../../../../stores/customersStore";
+import { useUIStore } from "../../../../stores/uiStore";
 import { storeToRefs } from "pinia";
-import { useToastStore } from "../../../../stores/toastStore.js";
+import { useToastStore } from "../../../../stores/toastStore";
 
 export default {
 	setup() {
@@ -251,18 +225,14 @@ export default {
 		mobile_no: "",
 		address_line1: "",
 		city: "",
-		country: "Pakistan",
+		originalCity: "",
+		country: "Malta",
 		email_id: "",
-		referral_code: "",
-		birthday: "",
-		birthday_menu: false,
 		group: "",
 		groups: [],
 		territory: "",
 		territorys: [],
-		genders: [],
 		customer_type: "Individual",
-		gender: "",
 		loyalty_points: null,
 		loyalty_program: null,
 		hideNonEssential: false,
@@ -282,12 +252,13 @@ export default {
 			"Japan",
 			"Kuwait",
 			"Malaysia",
+			"Malta",
 			"Nepal",
 			"Netherlands",
 			"New Zealand",
 			"Norway",
 			"Oman",
-			"Pakistan",
+			"Malta",
 			"Philippines",
 			"Qatar",
 			"Saudi Arabia",
@@ -312,60 +283,16 @@ export default {
 				localStorage.setItem("posawesome_hide_non_essential_fields", JSON.stringify(val));
 			}
 		},
-		birthday(newVal) {
-			// Check if the user has entered 8 digits without separators (e.g., 04111994)
-			if (newVal && /^\d{8}$/.test(newVal)) {
-				try {
-					const day = newVal.substring(0, 2);
-					const month = newVal.substring(2, 4);
-					const year = newVal.substring(4);
 
-					// Format it as a hyphenated date for display
-					this.birthday = `${day}-${month}-${year}`;
-
-					// Update calendar (implemented below)
-					this.updateCalendarDate(day, month, year);
-				} catch (error) {
-					console.error("Error processing 8-digit date:", error);
-				}
-			}
-			// Check if the date is already in DD-MM-YYYY format
-			else if (newVal && /^\d{2}-\d{2}-\d{4}$/.test(newVal)) {
-				try {
-					const parts = newVal.split("-");
-					const day = parts[0];
-					const month = parts[1];
-					const year = parts[2];
-
-					// Update calendar to show the correct month
-					this.updateCalendarDate(day, month, year);
-				} catch (error) {
-					console.error("Error processing formatted date:", error);
-				}
-			}
-		},
-
-		// Add a watcher for the calendar menu to ensure it shows the right date when opened
-		birthday_menu(isOpen) {
-			if (isOpen && this.birthday && /^\d{2}-\d{2}-\d{4}$/.test(this.birthday)) {
-				try {
-					const parts = this.birthday.split("-");
-					const day = parts[0];
-					const month = parts[1];
-					const year = parts[2];
-
-					// Update calendar date when menu opens
-					this.$nextTick(() => {
-						this.updateCalendarDate(day, month, year);
-					});
-				} catch (error) {
-					console.error("Error updating calendar on menu open:", error);
-				}
-			}
-		},
 	},
 	computed: {},
 	methods: {
+		cityOptions, cityFilter,
+		applyCustomerDefaults() {
+			Object.assign(this, customerDefaults(this.pos_profile || {}, {
+				group: frappe.defaults.get_user_default("Customer Group"), territory: frappe.defaults.get_user_default("Territory"),
+			}));
+		},
 		focusCustomerNameField() {
 			this.$nextTick(() => {
 				const field = this.$refs.customerNameField;
@@ -384,29 +311,6 @@ export default {
 		handleConfirmEscape() {
 			this.confirmClose();
 		},
-		// Add a new method to update calendar date
-		updateCalendarDate(day, month, year) {
-			// First close the date picker if it's open
-			const wasOpen = this.birthday_menu;
-			this.birthday_menu = false;
-
-			// Use nextTick to ensure DOM updates
-			this.$nextTick(() => {
-				// Format date in YYYY-MM-DD format for Vuetify
-				const tempDate = `${year}-${month}-${day}`;
-
-				// Try to directly set the calendar's date
-				setTimeout(() => {
-					if (this.$refs.birthday_menu) {
-						this.$refs.birthday_menu.date = tempDate;
-						// Optionally reopen menu if it was open
-						if (wasOpen) {
-							this.birthday_menu = true;
-						}
-					}
-				}, 50);
-			});
-		},
 		confirm_close() {
 			// Check if any data has been entered
 			if (
@@ -414,9 +318,7 @@ export default {
 				this.tax_id ||
 				this.mobile_no ||
 				this.address_line1 ||
-				this.email_id ||
-				this.referral_code ||
-				this.birthday
+				this.email_id || this.city
 			) {
 				this.confirmDialog = true;
 			} else {
@@ -438,15 +340,12 @@ export default {
 			this.mobile_no = "";
 			this.address_line1 = "";
 			this.city = "";
-			this.country = (this.pos_profile && this.pos_profile.posa_default_country) || "Pakistan";
+			this.originalCity = "";
+			this.applyCustomerDefaults();
 			this.email_id = "";
-			this.referral_code = "";
-			this.birthday = "";
-			this.group = frappe.defaults.get_user_default("Customer Group");
-			this.territory = frappe.defaults.get_user_default("Territory");
+
 			this.customer_id = "";
 			this.customer_type = "Individual";
-			this.gender = "";
 			this.loyalty_points = null;
 			this.loyalty_program = null;
 		},
@@ -486,34 +385,6 @@ export default {
 					}
 				});
 		},
-		getGenders() {
-			const vm = this;
-			frappe.db
-				.get_list("Gender", {
-					fields: ["name"],
-					page_length: 10,
-				})
-				.then((data) => {
-					if (data.length > 0) {
-						data.forEach((el) => {
-							vm.genders.push(el.name);
-						});
-					}
-				});
-		},
-		formatBirthdayOnInput() {
-			// Handle 8-digit format (DDMMYYYY)
-			if (this.birthday && /^\d{8}$/.test(this.birthday)) {
-				try {
-					const day = this.birthday.substring(0, 2);
-					const month = this.birthday.substring(2, 4);
-					const year = this.birthday.substring(4);
-					this.birthday = `${day}-${month}-${year}`;
-				} catch (error) {
-					console.error("Error formatting date:", error);
-				}
-			}
-		},
 		async submit_dialog() {
 			const vm = this;
 			if (!this.customer_name) {
@@ -531,58 +402,10 @@ export default {
 				return;
 			}
 
-			// Format birthday to YYYY-MM-DD if it exists and is in another format
-			let formatted_birthday = null;
-			if (this.birthday) {
-				try {
-					// First check if it's a date without separators (e.g., 04111994 for 04-11-1994)
-					if (/^\d{8}$/.test(this.birthday)) {
-						const day = this.birthday.substring(0, 2);
-						const month = this.birthday.substring(2, 4);
-						const year = this.birthday.substring(4);
-						formatted_birthday = `${year}-${month}-${day}`;
-					}
-					// Check if it's in DD-MM-YYYY format
-					else if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(this.birthday)) {
-						const parts = this.birthday.split("-");
-						if (parts.length === 3) {
-							const day = parts[0].padStart(2, "0");
-							const month = parts[1].padStart(2, "0");
-							const year = parts[2];
-							formatted_birthday = `${year}-${month}-${day}`;
-						}
-					}
-					// Handle DD/MM/YYYY format
-					else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(this.birthday)) {
-						const parts = this.birthday.split("/");
-						if (parts.length === 3) {
-							const day = parts[0].padStart(2, "0");
-							const month = parts[1].padStart(2, "0");
-							const year = parts[2];
-							formatted_birthday = `${year}-${month}-${day}`;
-						}
-					}
-					// For any other format, try to use the browser's date parsing
-					else if (this.birthday) {
-						try {
-							const date = new Date(this.birthday);
-							// Check if the date is valid
-							if (!isNaN(date.getTime())) {
-								const year = date.getFullYear();
-								const month = String(date.getMonth() + 1).padStart(2, "0");
-								const day = String(date.getDate()).padStart(2, "0");
-								formatted_birthday = `${year}-${month}-${day}`;
-							}
-						} catch (e) {
-							console.error("Failed to parse date:", e);
-						}
-					}
-				} catch (error) {
-					console.error("Error formatting date:", error);
-					formatted_birthday = null;
-				}
+			if (!validCity(this.city, this.country, this.originalCity) || (this.address_line1 && !this.city)) {
+				frappe.throw(__("Select a city for this address from the list."));
+				return;
 			}
-
 			// Create args object to use in callback
 			const args = {
 				customer_id: this.customer_id,
@@ -593,12 +416,9 @@ export default {
 				city: this.city,
 				country: this.country,
 				email_id: this.email_id,
-				referral_code: this.referral_code,
-				birthday: formatted_birthday || this.birthday,
 				customer_group: this.group,
 				territory: this.territory,
 				customer_type: this.customer_type,
-				gender: this.gender,
 			};
 			const apiArgs = {
 				...args,
@@ -659,38 +479,7 @@ export default {
 				},
 			});
 		},
-		onDateSelect() {
-			// Close the menu
-			this.birthday_menu = false;
 
-			// Format date if it's a JavaScript Date object or full date string (from date picker)
-			if (this.birthday) {
-				try {
-					// Handle both JavaScript Date objects and strings with GMT
-					let dateObj;
-					if (typeof this.birthday === "object") {
-						dateObj = this.birthday;
-					} else if (
-						typeof this.birthday === "string" &&
-						(this.birthday.includes("GMT") || this.birthday.includes("T"))
-					) {
-						dateObj = new Date(this.birthday);
-					} else {
-						// Already formatted or something else, leave it
-						return;
-					}
-
-					const year = dateObj.getFullYear();
-					const month = String(dateObj.getMonth() + 1).padStart(2, "0");
-					const day = String(dateObj.getDate()).padStart(2, "0");
-
-					// Format as DD-MM-YYYY
-					this.birthday = `${day}-${month}-${year}`;
-				} catch (error) {
-					console.error("Error formatting date from picker:", error);
-				}
-			}
-		},
 	},
 	created: function () {
 		if (typeof localStorage !== "undefined") {
@@ -711,20 +500,18 @@ export default {
 						this.customer_id = data.name;
 						this.address_line1 = data.primary_address || data.address_line1 || "";
 						this.city = data.city || "";
+						this.originalCity = this.city;
 						this.country =
 							data.country ||
 							(this.pos_profile && this.pos_profile.posa_default_country) ||
-							"Pakistan";
+							"Malta";
 						this.tax_id = data.tax_id;
 						this.mobile_no = data.mobile_no;
 						this.email_id = data.email_id;
-						this.referral_code = data.referral_code;
-						this.birthday = data.birthday;
 						this.group = data.customer_group;
 						this.territory = data.territory;
 						this.loyalty_points = data.loyalty_points;
 						this.loyalty_program = data.loyalty_program;
-						this.gender = data.gender;
 					} else {
 						// Setup for new customer
 						this.clear_customer();
@@ -739,28 +526,16 @@ export default {
 			(profile) => {
 				if (profile) {
 					this.pos_profile = profile;
-					this.country = (profile && profile.posa_default_country) || "Pakistan";
+					if (!this.isUpdateCustomerDialogOpen) this.applyCustomerDefaults();
 				}
 			},
 			{ deep: true, immediate: true },
 		);
 
-		/*
-		this.eventBus.on("register_pos_profile", (data) => {
-			this.pos_profile = data.pos_profile;
-			this.country = (this.pos_profile && this.pos_profile.posa_default_country) || "Pakistan";
-		});
-		this.eventBus.on("payments_register_pos_profile", (data) => {
-			this.pos_profile = data.pos_profile;
-			this.country = (this.pos_profile && this.pos_profile.posa_default_country) || "Pakistan";
-		});
-		*/
 		this.getCustomerGroups();
 		this.getCustomerTerritorys();
-		this.getGenders();
 		// set default values for customer group and territory from user defaults
-		this.group = frappe.defaults.get_user_default("Customer Group");
-		this.territory = frappe.defaults.get_user_default("Territory");
+		this.applyCustomerDefaults();
 	},
 };
 </script>

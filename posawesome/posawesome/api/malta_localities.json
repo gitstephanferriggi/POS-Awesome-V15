@@ -1,0 +1,516 @@
+{
+  "source": "https://address.gov.mt/localities/",
+  "verified_on": "2026-11-02",
+  "localities": [
+    {
+      "value": "Baħar iċ-Ċagħaq, In-Naxxar",
+      "locality": "Baħar iċ-Ċagħaq, In-Naxxar",
+      "council": "In-Naxxar",
+      "island": "Malta"
+    },
+    {
+      "value": "Birkirkara",
+      "locality": "Birkirkara",
+      "council": "Birkirkara",
+      "island": "Malta"
+    },
+    {
+      "value": "Birżebbuġa",
+      "locality": "Birżebbuġa",
+      "council": "Birżebbuġa",
+      "island": "Malta"
+    },
+    {
+      "value": "Bormla",
+      "locality": "Bormla",
+      "council": "Bormla",
+      "island": "Malta"
+    },
+    {
+      "value": "Bubaqra, Iż-Żurrieq",
+      "locality": "Bubaqra, Iż-Żurrieq",
+      "council": "Iż-Żurrieq",
+      "island": "Malta"
+    },
+    {
+      "value": "Burmarrad, San Pawl il-Baħar",
+      "locality": "Burmarrad, San Pawl il-Baħar",
+      "council": "San Pawl il-Baħar",
+      "island": "Malta"
+    },
+    {
+      "value": "Fleur-de-Lys, Birkirkara",
+      "locality": "Fleur-de-Lys, Birkirkara",
+      "council": "Birkirkara",
+      "island": "Malta"
+    },
+    {
+      "value": "Floriana",
+      "locality": "Floriana",
+      "council": "Floriana",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Għajnsielem",
+      "locality": "Għajnsielem",
+      "council": "Għajnsielem",
+      "island": "Gozo"
+    },
+    {
+      "value": "Gwardamanġa, Tal-Pietà",
+      "locality": "Gwardamanġa, Tal-Pietà",
+      "council": "Tal-Pietà",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħ'Attard",
+      "locality": "Ħ'Attard",
+      "council": "Ħ'Attard",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħad-Dingli",
+      "locality": "Ħad-Dingli",
+      "council": "Ħad-Dingli",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Balzan",
+      "locality": "Ħal Balzan",
+      "council": "Ħal Balzan",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Farruġ, Ħal Luqa",
+      "locality": "Ħal Farruġ, Ħal Luqa",
+      "council": "Ħal Luqa",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Għargħur",
+      "locality": "Ħal Għargħur",
+      "council": "Ħal Għargħur",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Għaxaq",
+      "locality": "Ħal Għaxaq",
+      "council": "Ħal Għaxaq",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Kirkop",
+      "locality": "Ħal Kirkop",
+      "council": "Ħal Kirkop",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Lija",
+      "locality": "Ħal Lija",
+      "council": "Ħal Lija",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Luqa",
+      "locality": "Ħal Luqa",
+      "council": "Ħal Luqa",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Qormi",
+      "locality": "Ħal Qormi",
+      "council": "Ħal Qormi",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Safi",
+      "locality": "Ħal Safi",
+      "council": "Ħal Safi",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħal Tarxien",
+      "locality": "Ħal Tarxien",
+      "council": "Ħal Tarxien",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħaż-Żabbar",
+      "locality": "Ħaż-Żabbar",
+      "council": "Ħaż-Żabbar",
+      "island": "Malta"
+    },
+    {
+      "value": "Ħaż-Żebbuġ (Malta)",
+      "locality": "Ħaż-Żebbuġ (Malta)",
+      "council": "Ħaż-Żebbuġ (Malta)",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Baħrija, Ir-Rabat (Malta)",
+      "locality": "Il-Baħrija, Ir-Rabat (Malta)",
+      "council": "Ir-Rabat (Malta)",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Belt Valletta",
+      "locality": "Il-Belt Valletta",
+      "council": "Il-Belt Valletta",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Birgu",
+      "locality": "Il-Birgu",
+      "council": "Il-Birgu",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Fgura",
+      "locality": "Il-Fgura",
+      "council": "Il-Fgura",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Il-Fontana",
+      "locality": "Il-Fontana",
+      "council": "Il-Fontana",
+      "island": "Gozo"
+    },
+    {
+      "value": "Il-Gudja",
+      "locality": "Il-Gudja",
+      "council": "Il-Gudja",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Gżira",
+      "locality": "Il-Gżira",
+      "council": "Il-Gżira",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Ħamrun",
+      "locality": "Il-Ħamrun",
+      "council": "Il-Ħamrun",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Kalkara",
+      "locality": "Il-Kalkara",
+      "council": "Il-Kalkara",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Marsa",
+      "locality": "Il-Marsa",
+      "council": "Il-Marsa",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Mellieħa",
+      "locality": "Il-Mellieħa",
+      "council": "Il-Mellieħa",
+      "island": "Malta"
+    },
+    {
+      "value": "Il-Mosta",
+      "locality": "Il-Mosta",
+      "council": "Il-Mosta",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Il-Munxar",
+      "locality": "Il-Munxar",
+      "council": "Il-Munxar",
+      "island": "Gozo"
+    },
+    {
+      "value": "Gozo – Il-Qala",
+      "locality": "Il-Qala",
+      "council": "Il-Qala",
+      "island": "Gozo"
+    },
+    {
+      "value": "Il-Qrendi",
+      "locality": "Il-Qrendi",
+      "council": "Il-Qrendi",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – In-Nadur",
+      "locality": "In-Nadur",
+      "council": "In-Nadur",
+      "island": "Gozo"
+    },
+    {
+      "value": "In-Naxxar",
+      "locality": "In-Naxxar",
+      "council": "In-Naxxar",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Ir-Rabat (Għawdex)",
+      "locality": "Ir-Rabat (Għawdex)",
+      "council": "Ir-Rabat (Għawdex)",
+      "island": "Gozo"
+    },
+    {
+      "value": "Ir-Rabat (Malta)",
+      "locality": "Ir-Rabat (Malta)",
+      "council": "Ir-Rabat (Malta)",
+      "island": "Malta"
+    },
+    {
+      "value": "Is-Siġġiewi",
+      "locality": "Is-Siġġiewi",
+      "council": "Is-Siġġiewi",
+      "island": "Malta"
+    },
+    {
+      "value": "Is-Swatar, Birkirkara",
+      "locality": "Is-Swatar, Birkirkara",
+      "council": "Birkirkara",
+      "island": "Malta"
+    },
+    {
+      "value": "Is-Swatar, L-Imsida",
+      "locality": "Is-Swatar, L-Imsida",
+      "council": "L-Imsida",
+      "island": "Malta"
+    },
+    {
+      "value": "Is-Swieqi",
+      "locality": "Is-Swieqi",
+      "council": "Is-Swieqi",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Ix-Xagħra",
+      "locality": "Ix-Xagħra",
+      "council": "Ix-Xagħra",
+      "island": "Gozo"
+    },
+    {
+      "value": "Gozo – Ix-Xewkija",
+      "locality": "Ix-Xewkija",
+      "council": "Ix-Xewkija",
+      "island": "Gozo"
+    },
+    {
+      "value": "Ix-Xgħajra",
+      "locality": "Ix-Xgħajra",
+      "council": "Ix-Xgħajra",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Iż-Żebbuġ (Għawdex)",
+      "locality": "Iż-Żebbuġ (Għawdex)",
+      "council": "Iż-Żebbuġ (Għawdex)",
+      "island": "Gozo"
+    },
+    {
+      "value": "Iż-Żejtun",
+      "locality": "Iż-Żejtun",
+      "council": "Iż-Żejtun",
+      "island": "Malta"
+    },
+    {
+      "value": "Iż-Żurrieq",
+      "locality": "Iż-Żurrieq",
+      "council": "Iż-Żurrieq",
+      "island": "Malta"
+    },
+    {
+      "value": "Kappara, San Ġwann",
+      "locality": "Kappara, San Ġwann",
+      "council": "San Ġwann",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – L-Għarb",
+      "locality": "L-Għarb",
+      "council": "L-Għarb",
+      "island": "Gozo"
+    },
+    {
+      "value": "Gozo – L-Għasri",
+      "locality": "L-Għasri",
+      "council": "L-Għasri",
+      "island": "Gozo"
+    },
+    {
+      "value": "L-Iklin",
+      "locality": "L-Iklin",
+      "council": "L-Iklin",
+      "island": "Malta"
+    },
+    {
+      "value": "L-Imdina",
+      "locality": "L-Imdina",
+      "council": "L-Imdina",
+      "island": "Malta"
+    },
+    {
+      "value": "L-Imġarr",
+      "locality": "L-Imġarr",
+      "council": "L-Imġarr",
+      "island": "Malta"
+    },
+    {
+      "value": "L-Imqabba",
+      "locality": "L-Imqabba",
+      "council": "L-Imqabba",
+      "island": "Malta"
+    },
+    {
+      "value": "L-Imsida",
+      "locality": "L-Imsida",
+      "council": "L-Imsida",
+      "island": "Malta"
+    },
+    {
+      "value": "L-Imtarfa",
+      "locality": "L-Imtarfa",
+      "council": "L-Imtarfa",
+      "island": "Malta"
+    },
+    {
+      "value": "L-Isla",
+      "locality": "L-Isla",
+      "council": "L-Isla",
+      "island": "Malta"
+    },
+    {
+      "value": "Madliena, Is-Swieqi",
+      "locality": "Madliena, Is-Swieqi",
+      "council": "Is-Swieqi",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Marsalforn, Iż-Żebbuġ (Għawdex)",
+      "locality": "Marsalforn, Iż-Żebbuġ (Għawdex)",
+      "council": "Iż-Żebbuġ (Għawdex)",
+      "island": "Gozo"
+    },
+    {
+      "value": "Marsaskala",
+      "locality": "Marsaskala",
+      "council": "Marsaskala",
+      "island": "Malta"
+    },
+    {
+      "value": "Marsaxlokk",
+      "locality": "Marsaxlokk",
+      "council": "Marsaxlokk",
+      "island": "Malta"
+    },
+    {
+      "value": "Paceville, San Ġiljan",
+      "locality": "Paceville, San Ġiljan",
+      "council": "San Ġiljan",
+      "island": "Malta"
+    },
+    {
+      "value": "Paola",
+      "locality": "Paola",
+      "council": "Paola",
+      "island": "Malta"
+    },
+    {
+      "value": "Pembroke",
+      "locality": "Pembroke",
+      "council": "Pembroke",
+      "island": "Malta"
+    },
+    {
+      "value": "San Ġiljan",
+      "locality": "San Ġiljan",
+      "council": "San Ġiljan",
+      "island": "Malta"
+    },
+    {
+      "value": "San Ġwann",
+      "locality": "San Ġwann",
+      "council": "San Ġwann",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – San Lawrenz",
+      "locality": "San Lawrenz",
+      "council": "San Lawrenz",
+      "island": "Gozo"
+    },
+    {
+      "value": "San Pawl il-Baħar",
+      "locality": "San Pawl il-Baħar",
+      "council": "San Pawl il-Baħar",
+      "island": "Malta"
+    },
+    {
+      "value": "Santa Luċija",
+      "locality": "Santa Luċija",
+      "council": "Santa Luċija",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Santa Luċija, Ta' Kerċem",
+      "locality": "Santa Luċija, Ta' Kerċem",
+      "council": "Ta' Kerċem",
+      "island": "Gozo"
+    },
+    {
+      "value": "Santa Venera",
+      "locality": "Santa Venera",
+      "council": "Santa Venera",
+      "island": "Malta"
+    },
+    {
+      "value": "St Peter's, Ħaż-Żabbar",
+      "locality": "St Peter's, Ħaż-Żabbar",
+      "council": "Ħaż-Żabbar",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Ta' Kerċem",
+      "locality": "Ta' Kerċem",
+      "council": "Ta' Kerċem",
+      "island": "Gozo"
+    },
+    {
+      "value": "Gozo – Ta' Sannat",
+      "locality": "Ta' Sannat",
+      "council": "Ta' Sannat",
+      "island": "Gozo"
+    },
+    {
+      "value": "Ta' Xbiex",
+      "locality": "Ta' Xbiex",
+      "council": "Ta' Xbiex",
+      "island": "Malta"
+    },
+    {
+      "value": "Tal-Pietà",
+      "locality": "Tal-Pietà",
+      "council": "Tal-Pietà",
+      "island": "Malta"
+    },
+    {
+      "value": "Tal-Virtù, Ir-Rabat (Malta)",
+      "locality": "Tal-Virtù, Ir-Rabat (Malta)",
+      "council": "Ir-Rabat (Malta)",
+      "island": "Malta"
+    },
+    {
+      "value": "Tas-Sliema",
+      "locality": "Tas-Sliema",
+      "council": "Tas-Sliema",
+      "island": "Malta"
+    },
+    {
+      "value": "Gozo – Xlendi, Il-Munxar",
+      "locality": "Xlendi, Il-Munxar",
+      "council": "Il-Munxar",
+      "island": "Gozo"
+    }
+  ]
+}

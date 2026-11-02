@@ -39,14 +39,8 @@
 								></v-text-field>
 							</v-col>
 							<v-col cols="6">
-								<v-text-field
-									:label="__('City')"
-									density="compact"
-									color="primary"
-									class="pos-themed-input"
-									hide-details
-									v-model="address.city"
-								></v-text-field>
+								<v-autocomplete v-if="address.country === 'Malta'" v-model="address.city" :items="cityOptions()" :custom-filter="cityFilter" :label="__('City')" density="compact" class="pos-themed-input" clearable />
+								<v-text-field v-else v-model="address.city" :label="__('City')" density="compact" class="pos-themed-input" />
 							</v-col>
 							<v-col cols="6">
 								<v-text-field
@@ -71,12 +65,14 @@
 </template>
 
 <script>
+import { cityOptions, cityFilter, validCity, customerDefaults } from "../../../utils/maltaLocalities";
+import { useUIStore } from "../../../stores/uiStore";
 import { useToastStore } from "../../../stores/toastStore";
 
 export default {
 	setup() {
 		const toastStore = useToastStore();
-		return { toastStore };
+		return { toastStore, uiStore: useUIStore() };
 	},
 	data: () => ({
 		addressDialog: false,
@@ -87,12 +83,17 @@ export default {
 	computed: {},
 
 	methods: {
+		cityOptions, cityFilter,
 		close_dialog() {
 			this.addressDialog = false;
 		},
 
 		submit_dialog() {
 			var vm = this;
+			if (!this.address.city || !validCity(this.address.city, this.address.country)) {
+				frappe.throw(__("Select a city for this address from the list."));
+				return;
+			}
 			this.address.customer = this.customer;
 			this.address.doctype = "Customer";
 			frappe.call({
@@ -117,6 +118,7 @@ export default {
 	},
 	created: function () {
 		this.openNewAddressHandler = (data) => {
+			this.address = {country: customerDefaults(this.uiStore.posProfile || {}).country};
 			this.addressDialog = true;
 			this.customer = data;
 		};

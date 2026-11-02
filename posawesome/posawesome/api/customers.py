@@ -409,10 +409,13 @@ def create_customer(
         customer_doc.tax_id = tax_id
         customer_doc.mobile_no = mobile_no
         customer_doc.email_id = email_id
-        customer_doc.posa_referral_code = referral_code
-        customer_doc.posa_birthday = formatted_birthday
+        if referral_code is not None:
+            customer_doc.posa_referral_code = referral_code
+        if birthday is not None:
+            customer_doc.posa_birthday = formatted_birthday
         customer_doc.customer_type = customer_type
-        customer_doc.gender = gender
+        if gender is not None:
+            customer_doc.gender = gender
         customer_doc.save()
 
         # ensure contact details are synced correctly
