@@ -6,6 +6,7 @@ vi.mock("../src/offline/index", () => ({isOffline: () => true, saveOfflineCustom
 vi.mock("../src/posapp/stores/customersStore", () => ({useCustomersStore: vi.fn(() => ({addOrUpdateCustomer: vi.fn()}))}));
 vi.mock("../src/posapp/stores/uiStore", () => ({useUIStore: vi.fn()}));
 vi.mock("../src/posapp/stores/toastStore", () => ({useToastStore: vi.fn()}));
+import { useCustomersStore } from "../src/posapp/stores/customersStore";
 import { saveOfflineCustomer } from "../src/offline/index";
 import dialog from "../src/posapp/components/pos/dialogs/customer/UpdateCustomer.vue";
 
@@ -39,6 +40,8 @@ describe("Malta customer creation", () => {
   await (dialog as any).methods.submit_dialog.call(vm);
   const args = vi.mocked(saveOfflineCustomer).mock.calls.at(-1)![0].args;
   expect(args.city).toBe("Gozo – Il-Fontana");
+  const store = vi.mocked(useCustomersStore).mock.results.at(-1)!.value;
+  expect(store.addOrUpdateCustomer).toHaveBeenCalledWith(expect.objectContaining({customer_group: "D365 B2C", territory: "Malta", city: "Gozo – Il-Fontana", country: "Malta"}));
   for (const field of ["gender", "referral_code", "birthday"]) {
    expect(source).not.toContain(`v-model="${field}"`);
    expect(args).not.toHaveProperty(field);

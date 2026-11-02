@@ -440,6 +440,10 @@ export default {
 					email_id: args.email_id,
 					tax_id: args.tax_id,
 					primary_address: args.address_line1,
+					customer_group: args.customer_group,
+					territory: args.territory,
+					city: args.city,
+					country: args.country,
 				});
 				vm.close_dialog();
 				return;
@@ -467,6 +471,10 @@ export default {
 							email_id: args.email_id,
 							tax_id: args.tax_id,
 							primary_address: args.address_line1,
+					customer_group: args.customer_group,
+					territory: args.territory,
+					city: args.city,
+					country: args.country,
 						});
 						vm.close_dialog();
 					} else {
