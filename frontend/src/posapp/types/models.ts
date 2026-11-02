@@ -155,6 +155,8 @@ export interface Customer {
   territory: string;
   email_id?: string;
   mobile_no?: string;
+  phone?: string;
+  contact_numbers?: string[];
   tax_id?: string;
   image?: string;
   primary_address?: string;
@@ -166,6 +168,8 @@ export interface CustomerSummary {
   customer_name: string;
   email_id?: string;
   mobile_no?: string;
+  phone?: string;
+  contact_numbers?: string[];
   primary_address?: string;
   [key: string]: any;
 }

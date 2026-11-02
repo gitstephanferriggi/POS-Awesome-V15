@@ -103,6 +103,52 @@ def get_customer_balance(customer, company=None):
         return {"balance": 0, "customer_name": None, "currency": None}
 
 
+def _linked_contact_changes_since(modified_after):
+    """Contact edits must invalidate customer summaries during incremental sync."""
+    return [row.link_name for row in frappe.db.sql(
+        """SELECT DISTINCT link.link_name
+        FROM `tabDynamic Link` link INNER JOIN `tabContact` contact ON contact.name = link.parent
+        WHERE link.parenttype = 'Contact' AND link.parentfield = 'links'
+          AND link.link_doctype = 'Customer' AND contact.modified > %s""",
+        (modified_after,), as_dict=True,
+    )]
+
+
+def _with_linked_customer_phones(customers):
+    """Project real linked channels without changing customer or contact masters."""
+    if not customers:
+        return customers
+    rows = frappe.db.sql(
+        """SELECT link.link_name, contact.phone, contact.mobile_no, contact.modified
+        FROM `tabDynamic Link` link INNER JOIN `tabContact` contact ON contact.name = link.parent
+        WHERE link.parenttype = 'Contact' AND link.parentfield = 'links'
+          AND link.link_doctype = 'Customer' AND link.link_name IN %(names)s
+        ORDER BY link.link_name, contact.is_primary_contact DESC, contact.name""",
+        {"names": tuple(row["name"] for row in customers)}, as_dict=True,
+    )
+    by_name = {}
+    for row in rows:
+        by_name.setdefault(row.link_name, []).append(row)
+    result = []
+    for customer in customers:
+        customer = dict(customer)  # Never mutate the server-cached base record.
+        numbers = [customer.get("mobile_no")] if customer.get("mobile_no") else []
+        customer["phone"] = ""
+        for contact in by_name.get(customer["name"], []):
+            for field in ("mobile_no", "phone"):
+                value = cstr(contact.get(field)).strip()
+                if value and value not in numbers:
+                    numbers.append(value)
+                if value and not customer.get(field):
+                    customer[field] = value
+            if contact.modified and (not customer.get("modified") or
+                    get_datetime(contact.modified) > get_datetime(customer["modified"])):
+                customer["modified"] = contact.modified
+        customer["contact_numbers"] = numbers
+        result.append(customer)
+    return result
+
+
 @frappe.whitelist()
 def get_customer_names(pos_profile, limit=None, offset=None, start_after=None, modified_after=None):
     _pos_profile = json.loads(pos_profile)
@@ -117,6 +163,7 @@ def get_customer_names(pos_profile, limit=None, offset=None, start_after=None, m
     def _get_customer_names(pos_profile, limit=None, offset=None, start_after=None, modified_after=None):
         pos_profile = json.loads(pos_profile)
         filters = {"disabled": 0}
+        or_filters = None
 
         customer_groups = get_customer_groups(pos_profile)
         if customer_groups:
@@ -127,7 +174,12 @@ def get_customer_names(pos_profile, limit=None, offset=None, start_after=None, m
                 parsed_modified_after = get_datetime(modified_after)
             except Exception:
                 frappe.throw(_("modified_after must be a valid ISO datetime"))
-            filters["modified"] = [">", parsed_modified_after.isoformat()]
+            cutoff = parsed_modified_after.isoformat()
+            changed_customers = _linked_contact_changes_since(cutoff)
+            if changed_customers:
+                or_filters = [["modified", ">", cutoff], ["name", "in", changed_customers]]
+            else:
+                filters["modified"] = [">", cutoff]
 
         if start_after:
             filters["name"] = [">", start_after]
@@ -135,6 +187,7 @@ def get_customer_names(pos_profile, limit=None, offset=None, start_after=None, m
         customers = frappe.get_all(
             "Customer",
             filters=filters,
+            or_filters=or_filters,
             fields=[
                 "name",
                 "modified",
@@ -155,9 +208,10 @@ def get_customer_names(pos_profile, limit=None, offset=None, start_after=None, m
         return customers
 
     if _pos_profile.get("posa_use_server_cache") and not (limit or offset or start_after or modified_after):
-        return __get_customer_names(pos_profile, limit, offset, start_after, modified_after)
+        customers = __get_customer_names(pos_profile, limit, offset, start_after, modified_after)
     else:
-        return _get_customer_names(pos_profile, limit, offset, start_after, modified_after)
+        customers = _get_customer_names(pos_profile, limit, offset, start_after, modified_after)
+    return _with_linked_customer_phones(customers)
 
 
 @frappe.whitelist()
@@ -181,7 +235,10 @@ def get_customer_info(customer=None, company=None):
     res = {"loyalty_points": None, "conversion_factor": None}
 
     res["email_id"] = customer.email_id
-    res["mobile_no"] = customer.mobile_no
+    channels = _with_linked_customer_phones([{"name": customer.name, "mobile_no": customer.mobile_no}])[0]
+    res["mobile_no"] = channels.get("mobile_no") or ""
+    res["phone"] = channels["phone"]
+    res["contact_numbers"] = channels["contact_numbers"]
     res["image"] = customer.image
     res["loyalty_program"] = customer.loyalty_program
     res["customer_price_list"] = customer.default_price_list

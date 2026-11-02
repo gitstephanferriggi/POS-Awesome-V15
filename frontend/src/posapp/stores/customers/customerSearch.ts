@@ -33,6 +33,10 @@ export function buildCustomerSearchText(
 		customer.customer_name,
 		customer.name,
 		customer.mobile_no,
+		customer.phone,
+		...(customer.contact_numbers || []),
+		...[customer.mobile_no, customer.phone, ...(customer.contact_numbers || [])]
+			.filter(Boolean).map((value) => String(value).replace(/[^0-9]/g, "")),
 		customer.email_id,
 		(customer as CustomerSummary & { tax_id?: unknown }).tax_id,
 	]
@@ -57,7 +61,17 @@ export function customerMatchesSearchParts(
 	const searchText =
 		searchableCustomer._search_text || buildCustomerSearchText(customer);
 
-	return searchParts.every((part) => searchText.includes(part));
+	return searchParts.every((part) => {
+		if (searchText.includes(part)) return true;
+		// Formatted phone queries may contain +, spaces, hyphens or brackets.
+		if (/^[+()\d.-]+$/.test(part)) {
+			const digits = part.replace(/[^0-9]/g, "");
+			return digits.length >= 3 && (searchText.includes(digits) ||
+				[customer.mobile_no, customer.phone, ...(customer.contact_numbers || [])]
+					.some((value) => String(value || "").replace(/[^0-9]/g, "").includes(digits)));
+		}
+		return false;
+	});
 }
 
 export function customerMatchesSearchTerm(

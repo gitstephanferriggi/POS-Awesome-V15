@@ -56,6 +56,7 @@ describe("Customer dropdown XSS regression", () => {
 		expect(customerSource).toContain('{{ __("TAX ID") }}: {{ item.raw.tax_id }}');
 		expect(customerSource).toContain('{{ __("Email") }}: {{ item.raw.email_id }}');
 		expect(customerSource).toContain('{{ __("Mobile No") }}: {{ item.raw.mobile_no }}');
+		expect(customerSource).toContain('{{ __("Phone") }}: {{ item.raw.phone }}');
 		expect(customerSource).toContain('{{ __("Primary Address") }}: {{ item.raw.primary_address }}');
 	});
 

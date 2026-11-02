@@ -13,7 +13,7 @@ from posawesome.posawesome.api.offline_sync.common import (
     _resolve_profile,
 )
 
-SYNC_SCHEMA_VERSION = "2026-05-20"
+SYNC_SCHEMA_VERSION = "2026-11-02-contact-phones"
 
 
 def _build_customer_response(**kwargs):

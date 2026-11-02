@@ -93,6 +93,7 @@ describe("customersStore profile and customer dto handling", () => {
 		store.setCustomerInfo(info);
 
 		expect(store.customers).toContainEqual({
+			_search_text: "quotation customer\ncust-quote\nquote@example.com",
 			name: "CUST-QUOTE",
 			customer_name: "Quotation Customer",
 			email_id: "quote@example.com",
@@ -151,4 +152,13 @@ describe("customersStore profile and customer dto handling", () => {
 		expect(observedCounts).toContain(201);
 		expect(observedCounts).toContain(449);
 	});
+	it("refreshes the search index when customer detail supplies linked phones", () => {
+		const store = useCustomersStore();
+		store.setCustomerInfo({name: "C-1", customer_name: "Existing", _search_text: "stale"});
+		store.setCustomerInfo({name: "C-1", customer_name: "Existing", phone: "+356 9912 3456", contact_numbers: ["+356 9912 3456"]});
+		expect(store.customers[0].phone).toBe("+356 9912 3456");
+		expect(store.customers[0]._search_text).toContain("35699123456");
+		expect(store.customers[0]._search_text).not.toContain("stale");
+	});
+
 });

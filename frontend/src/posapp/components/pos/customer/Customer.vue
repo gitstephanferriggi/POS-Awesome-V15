@@ -88,6 +88,9 @@
 						<v-list-item-subtitle v-if="item.raw.mobile_no">
 							<div>{{ __("Mobile No") }}: {{ item.raw.mobile_no }}</div>
 						</v-list-item-subtitle>
+						<v-list-item-subtitle v-if="item.raw.phone && item.raw.phone !== item.raw.mobile_no">
+							<div>{{ __("Phone") }}: {{ item.raw.phone }}</div>
+						</v-list-item-subtitle>
 						<v-list-item-subtitle v-if="item.raw.primary_address">
 							<div>{{ __("Primary Address") }}: {{ item.raw.primary_address }}</div>
 						</v-list-item-subtitle>

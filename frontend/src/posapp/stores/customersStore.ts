@@ -11,6 +11,7 @@ import type {
 } from "../types/models";
 import {
 	buildCustomerSearchParts,
+	buildCustomerSearchText,
 	customerMatchesSearchParts,
 	normalizeCustomerSearchTerm,
 } from "./customers/customerSearch";
@@ -277,6 +278,8 @@ export const useCustomersStore = defineStore("customers", () => {
 		if (mobile) summary.mobile_no = mobile;
 		if (primaryAddress) summary.primary_address = primaryAddress;
 		if (taxId) summary.tax_id = taxId;
+
+		summary._search_text = buildCustomerSearchText(summary);
 
 		if (existingIndex >= 0) {
 			const updated = [...customers.value];

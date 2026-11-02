@@ -4,6 +4,7 @@ import pathlib
 import sys
 import types
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 
 
@@ -28,6 +29,9 @@ def _install_stubs():
     state = {
         "loyalty_detail_calls": 0,
         "get_all_calls": [],
+        "contacts": [],
+        "changed_contacts": [],
+        "sql_calls": [],
     }
 
     def get_all(doctype, **kwargs):
@@ -56,7 +60,12 @@ def _install_stubs():
     frappe_module.get_all = get_all
     frappe_module.get_doc = lambda *args, **kwargs: None
     frappe_module.get_value = lambda *args, **kwargs: None
+    def sql(query, values, as_dict=False):
+        state["sql_calls"].append((query, values))
+        return state["changed_contacts"] if "SELECT DISTINCT" in query else state["contacts"]
+
     frappe_module.db = SimpleNamespace(
+        sql=sql,
         get_value=lambda *args, **kwargs: None,
         count=lambda *args, **kwargs: 0,
         escape=lambda value: f"'{value}'",
@@ -65,7 +74,7 @@ def _install_stubs():
     frappe_utils_module.nowdate = lambda: "2026-05-21"
     frappe_utils_module.flt = lambda value=0, precision=None: float(value or 0)
     frappe_utils_module.cstr = lambda value="": "" if value is None else str(value)
-    frappe_utils_module.get_datetime = lambda value: value
+    frappe_utils_module.get_datetime = lambda value: datetime.fromisoformat(value) if isinstance(value, str) else value
     frappe_caching_module.redis_cache = lambda ttl=None: (lambda fn: fn)
     erpnext_loyalty_module.get_loyalty_program_details_with_points = (
         get_loyalty_program_details_with_points
@@ -117,6 +126,50 @@ class TestCustomersApi(unittest.TestCase):
         self.assertNotIn("loyalty_points", rows[0])
         self.assertNotIn("conversion_factor", rows[0])
         self.assertEqual(self.state["loyalty_detail_calls"], 0)
+
+
+    def test_linked_phone_is_not_reclassified_as_mobile(self):
+        self.state["contacts"] = [AttrDict(link_name="CUST-001", phone="+356 9912 3456", mobile_no="", modified="2026-11-02 12:00:00")]
+        rows = self.module.get_customer_names(json.dumps({"name": "POS-TEST"}), limit=1000)
+        self.assertEqual(rows[0]["phone"], "+356 9912 3456")
+        self.assertFalse(rows[0].get("mobile_no"))
+        self.assertEqual(rows[0]["contact_numbers"], ["+356 9912 3456"])
+        self.assertEqual(rows[0]["modified"], "2026-11-02 12:00:00")
+        self.assertEqual(len(self.state["sql_calls"]), 1)
+        self.assertEqual(self.state["sql_calls"][0][1], {"names": ("CUST-001",)})
+
+    def test_preserves_master_mobile_and_searches_secondary_contact_channels(self):
+        self.state["contacts"] = [
+            AttrDict(link_name="CUST-001", phone="2123 4567", mobile_no="9912 3456", modified=None),
+            AttrDict(link_name="CUST-001", phone="2123 4567", mobile_no="9922 3344", modified=None),
+            AttrDict(link_name="OTHER", phone="SECRET", mobile_no="", modified=None),
+        ]
+        original = {"name": "CUST-001", "mobile_no": "9944 5566"}
+        result = self.module._with_linked_customer_phones([original])[0]
+        self.assertEqual(result["mobile_no"], "9944 5566")
+        self.assertEqual(result["contact_numbers"], ["9944 5566", "9912 3456", "2123 4567", "9922 3344"])
+        self.assertEqual(original, {"name": "CUST-001", "mobile_no": "9944 5566"})
+
+    def test_no_contacts_returns_empty_channels_without_crashing(self):
+        result = self.module._with_linked_customer_phones([{"name": "CUST-001"}])[0]
+        self.assertEqual(result["phone"], "")
+        self.assertEqual(result["contact_numbers"], [])
+        self.assertEqual(self.module._with_linked_customer_phones([]), [])
+
+    def test_incremental_sync_includes_contact_edits_and_keeps_profile_scope_and_cursor(self):
+        self.state["changed_contacts"] = [AttrDict(link_name="CUST-001")]
+        self.module.get_customer_names(json.dumps({"name": "POS-TEST"}), limit=1000,
+                                       start_after="CUST-000", modified_after="2026-11-01 00:00:00")
+        _, args = self.state["get_all_calls"][-1]
+        self.assertEqual(args["filters"], {"disabled": 0, "name": [">", "CUST-000"]})
+        self.assertEqual(args["or_filters"], [["modified", ">", "2026-11-01T00:00:00"], ["name", "in", ["CUST-001"]]])
+
+    def test_incremental_sync_without_contact_changes_retains_customer_watermark(self):
+        self.module.get_customer_names(json.dumps({"name": "POS-TEST"}), limit=1000,
+                                       modified_after="2026-11-01 00:00:00")
+        _, args = self.state["get_all_calls"][-1]
+        self.assertEqual(args["filters"]["modified"], [">", "2026-11-01T00:00:00"])
+        self.assertIsNone(args["or_filters"])
 
 
 if __name__ == "__main__":

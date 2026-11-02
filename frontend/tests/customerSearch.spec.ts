@@ -52,4 +52,19 @@ describe("customer search helpers", () => {
 			true,
 		);
 	});
+	it("finds linked phones and secondary numbers despite punctuation", () => {
+		const customer: CustomerSummary = {
+			name: "CUST-002", customer_name: "Example Customer",
+			phone: "+356 9912-3456", contact_numbers: ["+356 9912-3456", "(356) 2123 4567"],
+		};
+		for (const query of ["99123456", "+35699123456", "9912 3456", "example 99123456", "21234567", "(356)21234567"]) {
+			expect(customerMatchesSearchTerm(customer, query), query).toBe(true);
+		}
+		expect(customerMatchesSearchTerm(customer, "99887766")).toBe(false);
+	});
+	it("keeps old cache rows without contact fields searchable", () => {
+		expect(customerMatchesSearchTerm({name: "C-1", customer_name: "Existing", mobile_no: "9912 3456", _search_text: "existing\n9912 3456"}, "99123456")).toBe(true);
+		expect(customerMatchesSearchTerm(null, "99123456")).toBe(false);
+	});
+
 });
