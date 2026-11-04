@@ -1,6 +1,7 @@
 import { unref, type Ref, type ComputedRef } from "vue";
 import { isCashLikePaymentLine } from "../../../utils/cashTender";
 import invoiceService from "../../../services/invoiceService";
+import { offerDeliveryBooking } from "../../../services/deliveryBooking";
 import { isApiEnvelopeError, unwrapApiResult } from "../../../services/api";
 import {
 	saveOfflineInvoice,
@@ -1196,6 +1197,9 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			if (onSuccess) {
 				onSuccess(r.message);
 			}
+
+			// The sale is already saved. This separate follow-up cannot resubmit it.
+			void offerDeliveryBooking(r.message);
 
 			return { success: true, message: r.message };
 		} catch (exc: any) {

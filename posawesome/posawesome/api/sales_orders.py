@@ -164,4 +164,10 @@ def submit_sales_order(order):
     if payments:
         _create_payment_entries(so_doc, payments)
 
-    return {"name": so_doc.name, "status": so_doc.docstatus}
+    delivery_booking = (
+        "jysk_malta" in frappe.get_installed_apps()
+        and frappe.db.get_single_value("JYSK Settings", "delivery_booking_enabled")
+        and so_doc.get("jysk_fulfilment_type") in ("Home Delivery", "Web Delivery", "B2B/Trade")
+    )
+    return {"name": so_doc.name, "status": so_doc.docstatus, "doctype": "Sales Order",
+            "delivery_booking": bool(delivery_booking)}
