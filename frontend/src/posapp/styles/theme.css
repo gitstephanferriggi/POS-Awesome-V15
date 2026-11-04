@@ -6,8 +6,8 @@
 :root {
 	/* Primary Background Colors */
 	--pos-bg-primary: #ffffff;
-	--pos-bg-secondary: #f8f9fa;
-	--pos-bg-tertiary: #e3f2fd;
+	--pos-bg-secondary: #f6f5f1;
+	--pos-bg-tertiary: #e7f0eb;
 
 	/* Surface Colors */
 	--pos-surface: #ffffff;
@@ -22,20 +22,20 @@
 	--pos-text-muted: #667085;
 
 	/* Primary Colors - Original Light Mode */
-	--pos-primary: #0097a7;
-	--pos-primary-variant: #00838f;
-	--pos-primary-container: #e0f7fa;
+	--pos-primary: #28685c;
+	--pos-primary-variant: #1d5147;
+	--pos-primary-container: #e7f0eb;
 	--pos-on-primary: #ffffff;
 
 	/* Secondary Colors - Original Light Mode */
-	--pos-secondary: #00bcd4;
-	--pos-secondary-variant: #0097a7;
-	--pos-secondary-container: #e0f7fa;
+	--pos-secondary: #42665c;
+	--pos-secondary-variant: #28685c;
+	--pos-secondary-container: #e7f0eb;
 	--pos-on-secondary: #ffffff;
 
 	/* Accent Colors - Modern Orange (Light Mode) */
-	--pos-accent: #ff6b35;
-	--pos-accent-variant: #e55a2b;
+	--pos-accent: #946348;
+	--pos-accent-variant: #7d513b;
 
 	/* Semantic Colors */
 	--pos-success: #66bb6a;
@@ -45,7 +45,7 @@
 	--pos-error: #e86674;
 	--pos-error-container: #fdeaea;
 	--pos-info: #2196f3;
-	--pos-info-container: #e3f2fd;
+	--pos-info-container: #e7f0eb;
 
 	/* Border and Divider Colors */
 	--pos-border: rgba(0, 0, 0, 0.12);
@@ -71,7 +71,7 @@
 	--pos-menu-bg: #ffffff;
 	--pos-dialog-bg: #ffffff;
 	--pos-surface-raised: #ffffff;
-	--pos-surface-muted: #f4f7fb;
+	--pos-surface-muted: #f1f2ed;
 	--pos-tooltip-bg: #ffffff;
 	--pos-tooltip-border: rgba(15, 23, 42, 0.12);
 	--pos-tooltip-shadow: rgba(15, 23, 42, 0.14);
@@ -92,7 +92,7 @@
 
 	/* Special Use Cases */
 	--pos-navbar-bg: #ffffff;
-	--pos-sidebar-bg: #f8f9fa;
+	--pos-sidebar-bg: #f6f5f1;
 	--pos-invoice-bg: #ffffff;
 	--pos-table-header-bg: #f5f5f5;
 	--pos-table-row-hover: rgba(25, 118, 210, 0.04);
@@ -129,20 +129,20 @@
 	--pos-text-muted: #b0b8c4;
 
 	/* Primary Colors - High Contrast Blue-Cyan */
-	--pos-primary: #00d4ff;
-	--pos-primary-variant: #00a0cc;
-	--pos-primary-container: #003344;
+	--pos-primary: #a4d4bf;
+	--pos-primary-variant: #7fbba2;
+	--pos-primary-container: #243f35;
 	--pos-on-primary: #000000;
 
 	/* Secondary Colors - High Contrast Cyan-Green */
-	--pos-secondary: #00e5b8;
-	--pos-secondary-variant: #00b894;
-	--pos-secondary-container: #004433;
+	--pos-secondary: #c1d9cb;
+	--pos-secondary-variant: #93bba6;
+	--pos-secondary-container: #2b4439;
 	--pos-on-secondary: #000000;
 
 	/* Accent Colors - Modern Orange */
-	--pos-accent: #ff6b35;
-	--pos-accent-variant: #e55a2b;
+	--pos-accent: #946348;
+	--pos-accent-variant: #7d513b;
 
 	/* Semantic Colors - High Contrast */
 	--pos-success: #4caf50;
@@ -207,16 +207,16 @@
 		--pos-text-disabled: #666666;
 		--pos-text-hint: #757575;
 		--pos-text-muted: #b0b8c4;
-		--pos-primary: #00d4ff;
-		--pos-primary-variant: #00a0cc;
-		--pos-primary-container: #003344;
+		--pos-primary: #a4d4bf;
+		--pos-primary-variant: #7fbba2;
+		--pos-primary-container: #243f35;
 		--pos-on-primary: #000000;
-		--pos-secondary: #00e5b8;
-		--pos-secondary-variant: #00b894;
-		--pos-secondary-container: #004433;
+		--pos-secondary: #c1d9cb;
+		--pos-secondary-variant: #93bba6;
+		--pos-secondary-container: #2b4439;
 		--pos-on-secondary: #000000;
-		--pos-accent: #ff6b35;
-		--pos-accent-variant: #e55a2b;
+		--pos-accent: #946348;
+		--pos-accent-variant: #7d513b;
 		--pos-success: #4caf50;
 		--pos-success-container: #2e7d32;
 		--pos-warning: #ffc107;

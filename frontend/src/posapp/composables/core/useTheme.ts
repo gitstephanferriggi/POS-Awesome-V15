@@ -139,9 +139,9 @@ export function useTheme() {
 			root.style.setProperty("--pos-text-disabled", "#9e9e9e");
 			root.style.setProperty("--pos-text-muted", "#b0b8c4");
 
-			root.style.setProperty("--pos-primary", "#00D4FF");
-			root.style.setProperty("--pos-primary-variant", "#00A0CC");
-			root.style.setProperty("--pos-secondary", "#00E5B8");
+			root.style.setProperty("--pos-primary", "#a4d4bf");
+			root.style.setProperty("--pos-primary-variant", "#7fbba2");
+			root.style.setProperty("--pos-secondary", "#c1d9cb");
 
 			root.style.setProperty("--pos-border", "rgba(255, 255, 255, 0.12)");
 			root.style.setProperty("--pos-divider", "#373737");
@@ -163,8 +163,8 @@ export function useTheme() {
 		} else {
 			// Light theme CSS custom properties
 			root.style.setProperty("--pos-bg-primary", "#ffffff");
-			root.style.setProperty("--pos-bg-secondary", "#f8f9fa");
-			root.style.setProperty("--pos-bg-tertiary", "#e3f2fd");
+			root.style.setProperty("--pos-bg-secondary", "#f6f5f1");
+			root.style.setProperty("--pos-bg-tertiary", "#e7f0eb");
 			root.style.setProperty("--pos-surface", "#ffffff");
 			root.style.setProperty("--pos-surface-variant", "#f5f5f5");
 
@@ -173,9 +173,9 @@ export function useTheme() {
 			root.style.setProperty("--pos-text-disabled", "#9e9e9e");
 			root.style.setProperty("--pos-text-muted", "#667085");
 
-			root.style.setProperty("--pos-primary", "#0097A7");
-			root.style.setProperty("--pos-primary-variant", "#00838F");
-			root.style.setProperty("--pos-secondary", "#00BCD4");
+			root.style.setProperty("--pos-primary", "#28685c");
+			root.style.setProperty("--pos-primary-variant", "#1d5147");
+			root.style.setProperty("--pos-secondary", "#42665c");
 
 			root.style.setProperty("--pos-border", "rgba(0, 0, 0, 0.12)");
 			root.style.setProperty("--pos-divider", "rgba(0, 0, 0, 0.06)");
@@ -298,7 +298,7 @@ export function useTheme() {
 			background: isDarkMode.value ? "#121212" : "#ffffff",
 			surface: isDarkMode.value ? "#1E1E1E" : "#ffffff",
 			surfaceVariant: isDarkMode.value ? "#2d2d2d" : "#f5f5f5",
-			primary: isDarkMode.value ? "#00D4FF" : "#0097A7",
+			primary: isDarkMode.value ? "#a4d4bf" : "#28685c",
 			textPrimary: isDarkMode.value ? "#ffffff" : "#212121",
 			textSecondary: isDarkMode.value ? "#e0e0e0" : "#666666",
 			border: isDarkMode.value
