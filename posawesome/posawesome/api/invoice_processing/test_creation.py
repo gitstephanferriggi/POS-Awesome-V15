@@ -126,6 +126,8 @@ def _install_framework_stubs():
     frappe_module._publish_realtime_calls = publish_realtime_calls
 
     sys.modules["frappe"] = frappe_module
+    # The retry decorator must use the same per-test Frappe runtime as creation.
+    sys.modules.pop("posawesome.posawesome.api.invoice_processing.stock_retry", None)
     sys.modules["frappe.utils"] = frappe_utils
     sys.modules["frappe.exceptions"] = frappe_exceptions
     sys.modules["frappe.utils.background_jobs"] = frappe_background_jobs

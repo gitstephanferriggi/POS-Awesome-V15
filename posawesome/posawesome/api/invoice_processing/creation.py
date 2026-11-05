@@ -1,4 +1,5 @@
 import frappe
+from posawesome.posawesome.api.invoice_processing.stock_retry import retry_stock_submission
 from frappe import _
 from frappe.exceptions import TimestampMismatchError
 from frappe.utils import (
@@ -1202,6 +1203,7 @@ def update_invoice(data):
 
 
 @frappe.whitelist()
+@retry_stock_submission
 def submit_invoice(invoice, data, submit_in_background=False):
     data = json.loads(data)
     invoice = json.loads(invoice)
@@ -1473,6 +1475,7 @@ def submit_invoice(invoice, data, submit_in_background=False):
     }
 
 
+@retry_stock_submission
 def submit_in_background_job(kwargs):
     invoice = kwargs.get("invoice")
     try:
@@ -1551,6 +1554,8 @@ def submit_in_background_job(kwargs):
 
     except Exception as e:
         frappe.db.rollback()
+        if getattr(e, "posa_retry_before_stock_posting", False) and frappe.flags.posa_stock_retry_attempt < 2:
+            raise
         error_msg = str(e)
         ledger_name = kwargs.get("ledger_name")
         if ledger_name:
