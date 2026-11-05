@@ -4,6 +4,7 @@
 		<v-row class="pa-1">
 			<!-- Delivery Date and Address (if applicable) -->
 			<v-col cols="6" v-if="posProfile.posa_allow_sales_order && invoiceType === 'Order'">
+				<div class="text-caption mb-1">{{ $frappe._("Requested delivery date") }}</div>
 				<VueDatePicker
 					:model-value="newDeliveryDate"
 					model-type="format"

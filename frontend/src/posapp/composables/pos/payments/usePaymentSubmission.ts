@@ -568,13 +568,14 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			!isCreditSale &&
 			!doc.is_return &&
 			!hasAnySettlement &&
+			!isOrderTypeDoc(doc) &&
 			invoice_total > 0
 		) {
 			throw new Error(__("Please enter payment amount"));
 		}
 
 		// 3. Validate partial payments / cash payments
-		if (!isCreditSale && !doc.is_return) {
+		if (!isCreditSale && !doc.is_return && !isOrderTypeDoc(doc)) {
 			let has_cash_payment = false;
 			let cash_amount = 0;
 			if (doc.payments) {

@@ -38,6 +38,25 @@ describe("usePaymentSubmission", () => {
 		});
 	});
 
+	it.each([
+		["Order", "Sales Order", 0, true],
+		["Order", "Sales Order", 1, true],
+		["Invoice", "Sales Invoice", 0, false],
+		["Invoice", "Sales Invoice", 1, false],
+	])("validates zero deposit for %s %s with partial payment %s", async (type, doctype, partial, allowed) => {
+		const { validateSubmission } = usePaymentSubmission({
+			invoiceDoc: ref<any>({doctype, is_return: 0, items: [{item_code: "CHAIR", qty: 1}],
+				payments: [{mode_of_payment: "Cash", amount: 0, type: "Cash"}], grand_total: 100,
+				rounded_total: 100, posa_delivery_date: "2026-11-10"}),
+			posProfile: ref({posa_allow_sales_order: 1, posa_allow_partial_payment: partial}),
+			stockSettings: ref({}), invoiceType: ref(type), formatFloat: value => Number(value || 0),
+			isCashback: ref(false), paidChange: ref(0), creditChange: ref(0),
+			redeemedCustomerCredit: ref(0), customerCreditDict: ref([]), diff_payment: ref(100),
+		});
+		if (allowed) await expect(validateSubmission(false)).resolves.toBe(true);
+		else await expect(validateSubmission(false)).rejects.toThrow("Please enter payment amount");
+	});
+
 	it("restores negative return payments back to normal amounts", () => {
 		const invoiceDoc = ref<any>({
 			is_return: 0,
