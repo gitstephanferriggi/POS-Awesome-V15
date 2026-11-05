@@ -60,8 +60,14 @@ export async function show_payment(context: any) {
 			!context.new_delivery_date &&
 			!(context.invoice_doc && context.invoice_doc.posa_delivery_date)
 		) {
-			invoice_doc = context.get_invoice_doc();
-		} else if (
+			// Use the requested date to obtain ERPNext's authoritative tax totals
+			// before showing deposits. The later capacity booking confirms delivery.
+			context.new_delivery_date = frappe.datetime.now_date();
+			if (context.invoice_doc) {
+				context.invoice_doc.posa_delivery_date = context.new_delivery_date;
+			}
+		}
+		if (
 			context.invoice_doc &&
 			context.invoice_doc.doctype === "Sales Order" &&
 			context.invoiceType === "Invoice"

@@ -62,6 +62,24 @@ describe("invoice payment dialogs", () => {
 		expect(context.eventBus.emit).toHaveBeenCalledWith("show_payment", "true");
 	});
 
+	it.each([null, "2026-11-10"])("shows native Sales Order VAT totals before taking a deposit with requested date %s", async requested => {
+		vi.stubGlobal("frappe", {call: vi.fn(), datetime: {now_date: () => "2026-11-05"}});
+		const context: any = createPaymentContext();
+		context.invoiceType = "Order";
+		context.pos_profile = {currency: "EUR", posa_allow_sales_order: 1, posa_create_only_sales_order: 1};
+		context.new_delivery_date = requested;
+		context.invoice_doc = requested ? {posa_delivery_date: requested} : {};
+		const nativeOrder = {name: "SO-DEMO", doctype: "Sales Order", grand_total: 23.6,
+			total: 20, total_taxes_and_charges: 3.6, taxes: [{rate: 18, tax_amount: 3.6}], payments: []};
+		context.process_invoice.mockResolvedValue(nativeOrder);
+		context.reload_current_invoice_from_backend.mockResolvedValue(nativeOrder);
+		await show_payment(context);
+		expect(context.process_invoice).toHaveBeenCalledTimes(1);
+		expect(context.new_delivery_date).toBe(requested || "2026-11-05");
+		expect(context.eventBus.emit).toHaveBeenCalledWith("send_invoice_doc_payment",
+			expect.objectContaining({grand_total: 23.6, total_taxes_and_charges: 3.6}));
+	});
+
 	it("switches compact layout back to the invoice when closing payments", () => {
 		const context = {
 			_suppressClosePayments: false,
