@@ -36,6 +36,35 @@
 						<template #append><v-icon>mdi-chevron-right</v-icon></template>
 					</v-list-item>
 				</v-list>
+				<section v-if="!loading && !error && futureLocations.length" class="mt-3">
+					<h3>Order for later fulfilment</h3>
+					<p>
+						Choose the intended delivery hub. Available goods will be reserved there; the
+						remaining quantity will wait for stock or a customer transfer. This does not confirm a
+						delivery date.
+					</p>
+					<v-list>
+						<v-list-item
+							v-for="location in futureLocations"
+							:key="location.warehouse"
+							:data-backorder-warehouse="location.warehouse"
+							:title="location.location_name + (location.is_current ? ' (this shop)' : '')"
+							subtitle="Accept order and wait for any missing stock"
+							@click="
+								finish({
+									...location,
+									available_qty:
+										product?.locations?.find(
+											(row) => row.warehouse === location.warehouse,
+										)?.available_qty || 0,
+									backorder: true,
+								})
+							"
+						>
+							<template #append><v-icon>mdi-clock-outline</v-icon></template>
+						</v-list-item>
+					</v-list>
+				</section>
 				<p class="mt-3">
 					Required: {{ required }} {{ product?.stock_uom }}. Stock is reserved when the order is
 					submitted.
@@ -54,6 +83,7 @@ const open = ref(false),
 	loading = ref(false),
 	error = ref(""),
 	message = ref("");
+const futureLocations = ref([]);
 const product = ref(null),
 	required = ref(1);
 let resolveChoice = null;
@@ -72,6 +102,7 @@ async function choose(line, qty, force = false) {
 	const version = ++sequence;
 	required.value = Math.abs(Number(qty) || 1) * (Number(line.conversion_factor) || 1);
 	product.value = null;
+	futureLocations.value = [];
 	error.value = "";
 	message.value = "";
 	const choice = new Promise((resolve) => {
@@ -88,6 +119,7 @@ async function choose(line, qty, force = false) {
 		if (version !== sequence) return choice;
 		if (!response.message || response.exc)
 			throw new Error("Could not check live stock. Please try again.");
+		futureLocations.value = response.message.fulfilment_locations || [];
 		product.value = response.message.items.find((item) => item.name === line.item_code);
 		if (!product.value) throw new Error("No stock product matched this item.");
 		const current = product.value.locations.find(
@@ -102,7 +134,7 @@ async function choose(line, qty, force = false) {
 			: "This shop does not have enough available stock. Select another source.";
 		if (!product.value.locations.some((row) => row.available_qty >= required.value))
 			message.value =
-				"No location has enough available stock for this quantity. Reduce the quantity or split it across separate order lines.";
+				"No single location has enough available stock. Choose later fulfilment below, or reduce or split the quantity.";
 		open.value = true;
 	} catch (e) {
 		if (version === sequence) {
