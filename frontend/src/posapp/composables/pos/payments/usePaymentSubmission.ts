@@ -831,6 +831,19 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 			onScheduleBackgroundCheck,
 		} = callbacks;
 
+		// Optional host preflight runs before payment mutation and API timeout starts.
+		// Returning false leaves the payment screen, cart and request identity intact.
+		const customerPreflight = typeof window !== "undefined"
+			? (window as any).jysk?.vat?.ensure_customer : undefined;
+		if (!isOffline() && type === "Invoice" && customerPreflight) {
+			const ready = await customerPreflight({
+				...doc,
+				doctype: resolvePosDocumentDoctype({ invoiceType: type, posProfile: profile }),
+				company: doc.company || profile?.company,
+			});
+			if (!ready) return { customerDetailsRequired: true };
+		}
+
 		if (doc.is_return) {
 			ensureReturnPaymentsAreNegative();
 		}
