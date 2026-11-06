@@ -25,6 +25,7 @@ vi.mock("../src/posapp/utils/stockCoordinator", () => ({
 describe("usePaymentSubmission", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.stubGlobal("window", {});
 		vi.stubGlobal("__", (value: string, args?: any[]) => {
 			if (!args?.length) return value;
 			return value.replace(/\{(\d+)\}/g, (_match, index) =>
@@ -36,6 +37,23 @@ describe("usePaymentSubmission", () => {
 				play_sound: vi.fn(),
 			},
 		});
+	});
+
+	it("keeps the sale and payment intact when customer details are requested", async () => {
+		const invoiceService = (await import("../src/posapp/services/invoiceService")).default;
+		const ensure = vi.fn().mockResolvedValue(false);
+		(window as any).jysk = { vat: { ensure_customer: ensure } };
+		const doc = {doctype: "Sales Invoice", customer: "Demo Customer", company: "Demo Ltd",
+			payments: [{mode_of_payment: "Cash", amount: 118}], grand_total: 118, items: []};
+		const before = JSON.stringify(doc);
+		const onSuccess = vi.fn(), onPrint = vi.fn(), onFinishNavigation = vi.fn();
+		const {submitInvoice} = usePaymentSubmission({invoiceDoc: ref<any>(doc), posProfile: ref({}),
+			invoiceType: ref("Invoice"), stockSettings: ref({}), formatFloat: Number});
+		await expect(submitInvoice(true, {onSuccess, onPrint, onFinishNavigation})).resolves.toEqual({customerDetailsRequired: true});
+		expect(ensure).toHaveBeenCalledOnce();
+		expect(invoiceService.submitInvoice).not.toHaveBeenCalled();
+		expect(JSON.stringify(doc)).toBe(before);
+		expect(onSuccess).not.toHaveBeenCalled();expect(onPrint).not.toHaveBeenCalled();expect(onFinishNavigation).not.toHaveBeenCalled();
 	});
 
 	it.each([
