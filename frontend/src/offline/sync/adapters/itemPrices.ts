@@ -1,3 +1,4 @@
+import { traceStartupEvent } from "../../../utils/startupTrace";
 import {
 	itemPriceRepository,
 	type OfflineItemPriceRecord,
@@ -42,6 +43,7 @@ export async function syncItemPricesResource(
 	let offset = 0;
 	let finalResponse: SyncResponse = {};
 	let scopeApplied = false;
+	let page = 0;
 	while (true) {
 		const response = await args.fetcher({
 			posProfile: args.posProfile,
@@ -50,10 +52,27 @@ export async function syncItemPricesResource(
 			schemaVersion: args.schemaVersion,
 		});
 		finalResponse = response;
-		if (
-			!scopeApplied &&
-			Array.isArray(response?.scope?.price_lists)
-		) {
+		page += 1;
+		const changesCount = Array.isArray(response?.changes)
+			? response.changes.length
+			: 0;
+		const pageDiagnostics = {
+			page,
+			offset,
+			nextOffset: response?.next_offset ?? null,
+			hasMore: Boolean(response?.has_more),
+			changesCount,
+			deletedCount: Array.isArray(response?.deleted)
+				? response.deleted.length
+				: 0,
+			schemaVersion: response?.schema_version || null,
+		};
+		traceStartupEvent(
+			"offline_sync.item_prices_page",
+			"ok",
+			pageDiagnostics,
+		);
+		if (!scopeApplied && Array.isArray(response?.scope?.price_lists)) {
 			await itemPriceRepository.deleteOutsidePriceLists(
 				response.scope.price_lists,
 			);
@@ -89,9 +108,33 @@ export async function syncItemPricesResource(
 		if (!response?.has_more) {
 			break;
 		}
-		const nextOffset = Number(response?.next_offset);
+		const reportedNextOffset = Number(response?.next_offset);
+		let nextOffset = reportedNextOffset;
 		if (!Number.isFinite(nextOffset) || nextOffset <= offset) {
-			throw new Error("Item Price sync returned an invalid next_offset");
+			const inferredNextOffset = offset + changesCount;
+			traceStartupEvent("offline_sync.item_prices_pagination", "error", {
+				...pageDiagnostics,
+				reportedNextOffset: response?.next_offset ?? null,
+				inferredNextOffset,
+			});
+			console.error(
+				"Item Price sync received an invalid pagination cursor",
+				{
+					...pageDiagnostics,
+					reportedNextOffset: response?.next_offset ?? null,
+					inferredNextOffset,
+				},
+			);
+			if (changesCount <= 0 || inferredNextOffset <= offset) {
+				throw new Error(
+					`Item Price sync returned an invalid next_offset at page ${page} (offset=${offset}, next_offset=${String(response?.next_offset)}, has_more=${String(response?.has_more)}, changes=${changesCount})`,
+				);
+			}
+			nextOffset = inferredNextOffset;
+			traceStartupEvent("offline_sync.item_prices_pagination", "info", {
+				...pageDiagnostics,
+				recoveredNextOffset: nextOffset,
+			});
 		}
 		offset = nextOffset;
 	}

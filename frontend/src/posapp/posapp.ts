@@ -46,6 +46,10 @@ import {
 	initLongTaskObserver,
 	isPerfEnabled,
 } from "./utils/perf.js";
+import {
+	finishStartupPhase,
+	startStartupPhase,
+} from "../utils/startupTrace";
 
 declare const __BUILD_VERSION__: string;
 
@@ -63,7 +67,14 @@ if (typeof frappe === "undefined") {
 }
 
 export async function initPosStorage() {
-	await startupInitPromise;
+	const phase = startStartupPhase("indexeddb.boot_critical_storage");
+	try {
+		await startupInitPromise;
+		finishStartupPhase(phase, "ok");
+	} catch (error) {
+		finishStartupPhase(phase, "error", { error });
+		throw error;
+	}
 }
 
 function getPosBuildVersion() {
@@ -95,6 +106,7 @@ export async function runPosBootSync() {
 }
 
 async function startOptionalRuntimeServices() {
+	const servicesPhase = startStartupPhase("optional_runtime_services");
 	const socketStore = useSocketStore();
 	socketStore.init();
 
@@ -115,6 +127,9 @@ async function startOptionalRuntimeServices() {
 		window.location.hostname === "localhost" ||
 		window.location.hostname === "127.0.0.1"
 	) {
+		const swPhase = startStartupPhase("service_worker.registration", {
+			hasController: Boolean(navigator.serviceWorker.controller),
+		});
 		// Register at `/sw.js?v=<build>` so a new build forces a fresh
 		// SW registration. The sw.js bytes are stable across deploys
 		// (the file reads version.json at runtime), so without a
@@ -133,9 +148,17 @@ async function startOptionalRuntimeServices() {
 			.register(swUrl)
 			.then((registration) => {
 				console.log("SW registered successfully", registration);
+				finishStartupPhase(swPhase, "ok", {
+					active: Boolean(registration.active),
+					waiting: Boolean(registration.waiting),
+				});
 			})
-			.catch((err) => console.error("SW registration failed", err));
+			.catch((err) => {
+				finishStartupPhase(swPhase, "error", { error: err });
+				console.error("SW registration failed", err);
+			});
 	}
+	finishStartupPhase(servicesPhase, "ok");
 }
 
 class PosAppController {
@@ -159,6 +182,7 @@ class PosAppController {
 	}
 
 	async initializeApp() {
+		const phase = startStartupPhase("frappe.vue_app_mount");
 		// Vuetify instance is now imported from plugins/vuetify.ts
 		this.app = createApp(App);
 		const { router, history } = createPosAppRouter();
@@ -208,6 +232,7 @@ class PosAppController {
 			initLongTaskObserver("posapp");
 		}
 
+		finishStartupPhase(phase, "ok");
 		return this;
 	}
 

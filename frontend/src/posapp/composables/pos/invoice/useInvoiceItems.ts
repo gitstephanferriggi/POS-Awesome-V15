@@ -405,8 +405,10 @@ export function useInvoiceItems(invoiceType: Ref<string>) {
 
 		if (field_name === "qty") {
 			syncLineAmounts(item);
-			bus.emit("apply_pricing_rules");
 			notifyCartLineChanged();
+			// Emit after the store totals/version are current so pricing evaluates
+			// the committed quantity, including transaction-level thresholds.
+			bus.emit("apply_pricing_rules");
 		}
 
 		return parsedValue;

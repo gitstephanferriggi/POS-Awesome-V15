@@ -809,6 +809,7 @@ def _save_draft_with_latest_timestamp(invoice_doc, retries=2):
     attempts = 0
 
     while True:
+        _enforce_return_pricing_invariant(invoice_doc)
         if invoice_doc.name and not invoice_doc.is_new():
             latest_modified = frappe.db.get_value(invoice_doc.doctype, invoice_doc.name, "modified")
             if latest_modified:
@@ -943,6 +944,26 @@ def _run_without_return_outstanding_prompts(invoice_doc, operation):
             ]
 
 
+def _enforce_return_pricing_invariant(invoice_doc):
+    if not cint(invoice_doc.get("is_return")):
+        return False
+    invoice_doc.ignore_pricing_rule = 1
+    invoice_doc.flags.ignore_pricing_rule = True
+    invoice_doc.set("pricing_rules", [])
+    return True
+
+
+def _apply_pricing_rule_policy(invoice_doc):
+    if _enforce_return_pricing_invariant(invoice_doc):
+        return 1
+    # JYSK resolves standard rules through apply_pricing_rules and its custom
+    # promotions in the cart. Preserve the existing invoice-save contract: a
+    # second ERPNext rule pass here overwrites those already reconciled rates.
+    invoice_doc.ignore_pricing_rule = 1
+    invoice_doc.flags.ignore_pricing_rule = True
+    return 1
+
+
 def _guard_return_cash_refund(invoice_doc):
     """Block a cash refund larger than what was actually paid on the original.
 
@@ -962,10 +983,18 @@ def _guard_return_cash_refund(invoice_doc):
     if refund <= 0:
         return
 
-    original_paid = flt(
-        frappe.db.get_value(invoice_doc.doctype, return_against, "paid_amount")
+    # Cap the refund at the cash the customer can still get back on this original,
+    # computed by the single shared rule (see compute_original_refundable_cash):
+    # grand_total - outstanding_amount - returns already issued. NOT paid_amount,
+    # which stays 0 for a credit invoice settled later via a Payment Entry.
+    from posawesome.posawesome.api.invoice_processing.returns import (
+        compute_original_refundable_cash,
     )
-    tolerance = 1.0 / (10 ** (cint(invoice_doc.precision("paid_amount")) or 2))
+
+    original_paid = compute_original_refundable_cash(invoice_doc.doctype, return_against, for_update=True)
+    return_total = abs(flt(invoice_doc.get("rounded_total")) or flt(invoice_doc.get("grand_total")))
+    original_paid = min(original_paid, return_total)
+    tolerance = 0.5 / (10 ** (cint(invoice_doc.precision("paid_amount")) or 2))
     if refund > original_paid + tolerance:
         frappe.throw(
             _(
@@ -992,6 +1021,7 @@ def update_invoice(data):
     _strip_client_freebies_from_payload(data)
     # Determine doctype based on POS Profile setting
     pos_profile = data.get("pos_profile")
+    data["ignore_pricing_rule"] = 1
     doctype = "Sales Invoice"
     if pos_profile and frappe.db.get_value(
         "POS Profile", pos_profile, "create_pos_invoice_instead_of_sales_invoice"
@@ -1079,13 +1109,13 @@ def update_invoice(data):
                     "is_free_item": d.get("is_free_item"),
                 }
 
-    invoice_doc.ignore_pricing_rule = 1
-    invoice_doc.flags.ignore_pricing_rule = True
+    _apply_pricing_rule_policy(invoice_doc)
 
     _deduplicate_free_items(invoice_doc)
 
     # Set missing values first
-    invoice_doc.set_missing_values()
+    invoice_doc.set_missing_values(for_validate=bool(invoice_doc.is_return))
+    _apply_pricing_rule_policy(invoice_doc)
     if effective_price_list:
         invoice_doc.selling_price_list = effective_price_list
 
@@ -1437,6 +1467,7 @@ def submit_invoice(invoice, data, submit_in_background=False):
             },
         )
     else:
+        _apply_pricing_rule_policy(invoice_doc)
         _run_without_return_outstanding_prompts(invoice_doc, invoice_doc.submit)
         if ledger_doc:
             _update_submission_ledger(
@@ -1523,6 +1554,8 @@ def submit_in_background_job(kwargs):
         invoice_doc = _save_draft_with_latest_timestamp(invoice_doc)
         _normalize_return_payment_rows(invoice_doc, invoice_doc.get("conversion_rate") or 1)
 
+        _enforce_return_pricing_invariant(invoice_doc)
+        _apply_pricing_rule_policy(invoice_doc)
         invoice_doc.submit()
         if ledger_doc:
             _update_submission_ledger(

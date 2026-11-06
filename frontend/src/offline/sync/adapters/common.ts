@@ -1,13 +1,7 @@
-import {
-	getBootstrapSnapshot,
-	setBootstrapSnapshot,
-} from "../../cache";
+import { getBootstrapSnapshot, setBootstrapSnapshot } from "../../cache";
 import { refreshBootstrapSnapshotFromCaches } from "../../bootstrapSnapshot";
 import { setSyncResourceState } from "../syncState";
-import type {
-	SyncLifecycleState,
-	SyncResourceId,
-} from "../types";
+import type { SyncLifecycleState, SyncResourceId } from "../types";
 
 export type SyncScopedProfile = {
 	name: string;
@@ -72,6 +66,9 @@ export function resolveWatermark(
 	response: SyncResponse,
 	fallback: string | null | undefined = null,
 ) {
+	if (response?.full_resync_required) {
+		return null;
+	}
 	return response?.next_watermark || fallback || null;
 }
 
@@ -108,13 +105,13 @@ export function refreshSnapshotFromSync({
 				modified: posProfile?.modified || null,
 			},
 		},
-		cacheState: ({
+		cacheState: {
 			...cacheState,
 			profileName: posProfile?.name || null,
 			paymentMethods: Array.isArray(posProfile?.payments)
 				? posProfile.payments
 				: cacheState?.paymentMethods,
-		} as any),
+		} as any,
 	});
 	setBootstrapSnapshot(nextSnapshot);
 	return nextSnapshot;

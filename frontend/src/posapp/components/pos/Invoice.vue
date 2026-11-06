@@ -271,6 +271,7 @@
 
 <script>
 import format from "../../format";
+import { authoritativeRefundCap } from "../../utils/refundCap";
 import InvoiceCustomerSection from "./invoice/InvoiceCustomerSection.vue";
 import DeliveryCharges from "./invoice/DeliveryCharges.vue";
 import PostingDateRow from "./invoice/PostingDateRow.vue";
@@ -943,22 +944,16 @@ export default {
 			this.invoiceType = "Return";
 			this.invoiceTypes = ["Return"];
 			this.invoice_doc.is_return = 1;
-			// Cap on cash refundable for this return = amount actually paid on the
-			// original invoice. 0 for an unpaid/credit invoice, so the payment screen
-			// defaults to no cash refund and the return becomes a credit note that
-			// reduces the customer's balance. Derived here so it covers every entry
-			// point that loads a return (returns dialog + invoice management).
+			// Cap on cash refundable for this return. The backend
+			// (get_invoice_for_return) computes it authoritatively as
+			// grand_total - outstanding - returns-already-issued; use that value.
+			// Covers every entry point that loads a return (returns dialog + invoice
+			// management). Older cached payloads without an authoritative balance
+			// cannot authorise a cash payout.
 			{
 				const od = data.invoice_doc || {};
 				const rd = data.return_doc || {};
-				let refundable =
-					od.posa_refundable_amount != null
-						? od.posa_refundable_amount
-						: rd.paid_amount != null
-							? rd.paid_amount
-							: (rd.grand_total || 0) - (rd.outstanding_amount || 0);
-				refundable = this.flt(refundable, this.currency_precision);
-				this.invoice_doc.posa_refundable_amount = refundable > 0 ? refundable : 0;
+				this.invoice_doc.posa_refundable_amount = authoritativeRefundCap(od, rd);
 			}
 			if (Array.isArray(this.invoice_doc.payments)) {
 				this.invoice_doc.payments.forEach((payment) => {

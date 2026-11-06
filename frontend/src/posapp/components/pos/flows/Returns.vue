@@ -325,6 +325,7 @@
 
 <script>
 import format, { formatUtils } from "../../../format";
+import { authoritativeRefundCap } from "../../../utils/refundCap";
 import { useInvoiceStore } from "../../../stores/invoiceStore.js";
 import { useUIStore } from "../../../stores/uiStore.js";
 import { computed } from "vue";
@@ -801,17 +802,12 @@ export default {
 					invoice_doc.grand_total = return_doc.grand_total;
 				}
 
-				// Cap on how much of this return may be refunded as cash: only what
-				// the customer actually paid on the original invoice. For an unpaid
-				// (credit) invoice this is 0, so the return defaults to a credit note
-				// that reduces the customer's balance instead of paying out cash.
-				const originalPaid = this.flt(
-					return_doc.paid_amount != null
-						? return_doc.paid_amount
-						: (return_doc.grand_total || 0) - (return_doc.outstanding_amount || 0),
-					this.currency_precision,
-				);
-				invoice_doc.posa_refundable_amount = originalPaid > 0 ? originalPaid : 0;
+				// Cap on how much of this return may be refunded as cash. The backend
+				// (get_invoice_for_return) computes it authoritatively as
+				// grand_total - outstanding - returns-already-issued; use it directly
+				// so the rule lives in one place. Older cached payloads without this
+				// balance cannot authorise a cash payout.
+				invoice_doc.posa_refundable_amount = authoritativeRefundCap(return_doc);
 
 				// These fields ensure proper return handling
 				invoice_doc.update_stock = 1;

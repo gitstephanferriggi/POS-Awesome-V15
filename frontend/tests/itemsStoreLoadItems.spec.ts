@@ -12,6 +12,7 @@ const offlineMocks = vi.hoisted(() => ({
 	getAllStoredItems: vi.fn(async () => []),
 	searchStoredItems: vi.fn(async () => []),
 	getCachedPriceListItems: vi.fn(async () => null),
+	assessCacheHealth: vi.fn(async () => {}),
 }));
 
 const cacheMocks = vi.hoisted(() => ({
@@ -41,6 +42,7 @@ vi.mock("../src/posapp/services/itemService", () => ({
 }));
 
 vi.mock("../src/offline/index", () => ({
+	isOffline: vi.fn(() => false),
 	refreshBootstrapSnapshotFromCacheState:
 		offlineMocks.refreshBootstrapSnapshotFromCacheState,
 	getStoredItemsCountByScope: offlineMocks.getStoredItemsCountByScope,
@@ -61,7 +63,7 @@ vi.mock("../src/posapp/composables/pos/items/store/useItemsCache", () => ({
 			},
 		},
 		cacheHealth: { value: { items: "healthy" } },
-		assessCacheHealth: vi.fn(async () => {}),
+		assessCacheHealth: offlineMocks.assessCacheHealth,
 		clearAllCaches: vi.fn(async () => {}),
 		clearSearchCache: cacheMocks.clearSearchCache,
 		getCachedItems: cacheMocks.getCachedItems,
@@ -81,7 +83,11 @@ vi.mock("../src/posapp/composables/pos/items/store/useItemsSearch", () => ({
 	useItemsSearch: () => {
 		const itemsMap = { value: new Map<string, any>() };
 		const barcodeIndex = { value: new Map<string, any>() };
-		const register = (index: Map<string, any>, value: unknown, item: any) => {
+		const register = (
+			index: Map<string, any>,
+			value: unknown,
+			item: any,
+		) => {
 			const raw = String(value || "").trim();
 			if (!raw) return;
 			index.set(raw, item);
@@ -135,7 +141,8 @@ vi.mock("../src/posapp/composables/pos/items/store/useItemsSearch", () => ({
 					? items.filter((item) => item?.item_group === group)
 					: items,
 			getItemByCode: (code: string) => itemsMap.value.get(code),
-			getItemByBarcode: (barcode: string) => barcodeIndex.value.get(barcode),
+			getItemByBarcode: (barcode: string) =>
+				barcodeIndex.value.get(barcode),
 		};
 	},
 }));
@@ -468,6 +475,78 @@ describe("itemsStore loadItems", () => {
 			expect.anything(),
 			expect.anything(),
 		);
+	});
+
+	it("starts the catalog API when a large or blocked IndexedDB read misses the cold-start grace", async () => {
+		vi.useFakeTimers();
+		try {
+			let releaseBlockedRead: ((value: number) => void) | undefined;
+			const blockedRead = new Promise<number>((resolve) => {
+				releaseBlockedRead = resolve;
+			});
+			let countReads = 0;
+			offlineMocks.getStoredItemsCountByScope.mockImplementation(() => {
+				countReads += 1;
+				return countReads <= 2 ? blockedRead : Promise.resolve(0);
+			});
+			const store = useItemsStore();
+			const initialization = store.initialize({
+				name: "POS-BLOCKED-IDB",
+				warehouse: "Main WH",
+				selling_price_list: "Retail",
+				currency: "PKR",
+				item_groups: [],
+				posa_use_limit_search: 0,
+			} as any);
+
+			await Promise.resolve();
+			expect(itemServiceMocks.getItemsData).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(250);
+			expect(itemServiceMocks.getItemsData).toHaveBeenCalledWith(
+				expect.objectContaining({
+					price_list: "Retail",
+					limit: 50,
+				}),
+				expect.any(AbortSignal),
+			);
+			releaseBlockedRead?.(0);
+			vi.useRealTimers();
+			await initialization;
+			expect(store.itemsLoaded).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("recovers from the server even while cache health never resolves", async () => {
+		const store = useItemsStore();
+		await store.initialize({
+			name: "POS-1",
+			warehouse: "Main WH",
+			selling_price_list: "Retail",
+			currency: "EUR",
+			item_groups: [],
+			posa_use_limit_search: 0,
+		} as any);
+		itemServiceMocks.getItemsData.mockClear();
+		offlineMocks.assessCacheHealth.mockImplementationOnce(
+			() => new Promise(() => {}),
+		);
+		vi.useFakeTimers();
+		try {
+			const recovery = store.recoverItemCatalog({
+				reason: "test-blocked-cache",
+			});
+			await vi.advanceTimersByTimeAsync(250);
+			await recovery;
+			expect(itemServiceMocks.getItemsData).toHaveBeenCalledWith(
+				expect.objectContaining({ limit: 50 }),
+				expect.any(AbortSignal),
+			);
+			expect(store.itemsLoaded).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("bypasses memory result cache when scoped offline catalog is large", async () => {

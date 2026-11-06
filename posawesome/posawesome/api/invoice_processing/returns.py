@@ -218,6 +218,59 @@ def search_invoices_for_return(
     return result
 
 
+def compute_original_refundable_cash(doctype, invoice_name, *, for_update=False):
+    """Net cash still refundable on returns of an original invoice.
+
+    Formula: grand_total - outstanding_amount - |returns already issued|,
+    clamped to >= 0. This is the single source of truth used by both the
+    return-load endpoint (to cap the payment screen) and the submit guard.
+
+    Why not paid_amount: it only counts payments made through the invoice's own
+    payment table (POS-style). A credit (on-account) invoice settled later via a
+    Payment Entry keeps paid_amount = 0 while outstanding drops to 0, so it wrongly
+    reads as unpaid.
+
+    Why subtract prior returns: a return credit note ALSO reduces the original's
+    outstanding_amount, so `grand - outstanding` alone counts already-returned
+    value as if it were cash paid. That would let an UNPAID, partially-returned
+    invoice leak a cash refund on money the customer never paid. Subtracting the
+    returns already issued isolates real payments and, as a bonus, tracks the
+    remaining refundable balance across multiple partial returns.
+    """
+    original = (
+        frappe.db.get_value(
+            doctype,
+            invoice_name,
+            ["grand_total", "outstanding_amount"],
+            as_dict=True,
+            for_update=for_update,
+        )
+        or {}
+    )
+    filters = {
+            "return_against": invoice_name,
+            "docstatus": 1,
+            "is_return": 1,
+    }
+    if for_update:
+        # Serialize payouts on the original invoice. Both queries are locking
+        # reads so a prior consistent-read snapshot cannot hide a concurrent
+        # committed return under MariaDB REPEATABLE READ.
+        returned = frappe.db.get_values(doctype, filters, ["grand_total"], as_dict=True, for_update=True)
+    else:
+        returned = frappe.get_all(doctype, filters=filters, fields=["grand_total"])
+    # Keep this compatible with both Frappe v15 and newer query parsers. Newer
+    # versions reject SQL functions supplied as strings, while older v15
+    # versions interpret aggregate dictionaries as child-table field queries.
+    returned_total = abs(sum(flt(row.get("grand_total")) for row in returned))
+    refundable = (
+        flt(original.get("grand_total"))
+        - flt(original.get("outstanding_amount"))
+        - returned_total
+    )
+    return refundable if refundable > 0 else 0.0
+
+
 @frappe.whitelist()
 def get_invoice_for_return(invoice_name, pos_profile=None, doctype="Sales Invoice"):
     """Return one invoice with returnable item quantities after past returns."""
@@ -235,6 +288,10 @@ def get_invoice_for_return(invoice_name, pos_profile=None, doctype="Sales Invoic
         # of a return may be refunded as cash vs. applied as a credit note.
         "outstanding_amount": flt(invoice_doc.get("outstanding_amount")),
         "paid_amount": flt(invoice_doc.get("paid_amount")),
+        # Authoritative cash-refund cap for this return. The frontend uses this
+        # directly instead of recomputing from paid_amount/outstanding, so the
+        # rule lives in one place (see compute_original_refundable_cash).
+        "posa_refundable_amount": compute_original_refundable_cash(doctype, invoice_name),
         "status": invoice_doc.get("status"),
         "total": invoice_doc.total,
         "net_total": invoice_doc.net_total,

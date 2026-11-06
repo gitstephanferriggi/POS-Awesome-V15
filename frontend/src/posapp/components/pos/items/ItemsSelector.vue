@@ -320,6 +320,8 @@ let cleanupItemsSelectorEvents: (() => void) | null = null;
 let cleanupTypeToSearch: (() => void) | null = null;
 let cleanupLayoutLifecycle: (() => void) | null = null;
 let cleanupSearchInput: (() => void) | null = null;
+let itemCatalogRecoveryTimer: number | null = null;
+let lastItemCatalogResumeCheckAt = Date.now();
 
 const responsive = useResponsive();
 const rtl = useRtl();
@@ -345,7 +347,13 @@ const itemSync = useItemSync();
 const itemDisplay = useItemDisplay();
 const itemsLoader = useItemsLoader();
 const itemCurrencyUtils = useItemCurrency();
-const { startItemWorker, itemWorker, storageAvailable, markStorageUnavailable } = useItemStorageSafety();
+const {
+	startItemWorker,
+	itemWorker,
+	storageAvailable,
+	ensureStorageHealth,
+	markStorageUnavailable,
+} = useItemStorageSafety();
 const {
 	ensureBarcodeIndex,
 	resetBarcodeIndex,
@@ -498,6 +506,67 @@ const isLoadingOrSyncing = computed(() => {
 	if (isBackgroundLoading.value && items.value.length === 0) return true;
 	return false;
 });
+
+const scheduleItemCatalogRecovery = (reason: string) => {
+	if (itemCatalogRecoveryTimer) {
+		return;
+	}
+	itemCatalogRecoveryTimer = window.setTimeout(async () => {
+		itemCatalogRecoveryTimer = null;
+		try {
+			await ensureStorageHealth();
+			await itemsIntegration.recoverItemCatalogIfUnhealthy(reason);
+		} catch (error) {
+			console.warn("Item catalog recovery failed:", error);
+		}
+	}, 250);
+};
+
+const handleItemCatalogResume = (reason: string) => {
+	if (typeof document !== "undefined" && document.hidden) {
+		lastItemCatalogResumeCheckAt = Date.now();
+		return;
+	}
+
+	const now = Date.now();
+	const elapsedMs = now - lastItemCatalogResumeCheckAt;
+	lastItemCatalogResumeCheckAt = now;
+	const wokeFromSleep = elapsedMs > 2 * 60 * 1000;
+	const hasNoVisibleItems = items.value.length === 0 && displayedItems.value.length === 0;
+
+	if (reason === "online" || wokeFromSleep || hasNoVisibleItems || isLoadingOrSyncing.value) {
+		scheduleItemCatalogRecovery(reason);
+	}
+};
+
+const handleItemCatalogFocus = () => handleItemCatalogResume("focus");
+const handleItemCatalogPageShow = () => handleItemCatalogResume("pageshow");
+const handleItemCatalogOnline = () => handleItemCatalogResume("online");
+const handleItemCatalogVisibility = () => handleItemCatalogResume("visibility");
+
+const bindItemCatalogRecoveryListeners = () => {
+	if (typeof window === "undefined") {
+		return;
+	}
+	window.addEventListener("focus", handleItemCatalogFocus);
+	window.addEventListener("pageshow", handleItemCatalogPageShow);
+	window.addEventListener("online", handleItemCatalogOnline);
+	if (typeof document !== "undefined") {
+		document.addEventListener("visibilitychange", handleItemCatalogVisibility);
+	}
+};
+
+const unbindItemCatalogRecoveryListeners = () => {
+	if (typeof window === "undefined") {
+		return;
+	}
+	window.removeEventListener("focus", handleItemCatalogFocus);
+	window.removeEventListener("pageshow", handleItemCatalogPageShow);
+	window.removeEventListener("online", handleItemCatalogOnline);
+	if (typeof document !== "undefined") {
+		document.removeEventListener("visibilitychange", handleItemCatalogVisibility);
+	}
+};
 
 const syncStatus = computed(() => {
 	if (loading.value) return __("Loading items...");
@@ -934,6 +1003,9 @@ onMounted(async () => {
 		get loading() {
 			return loading.value;
 		},
+		ensureStorageHealth: async () => {
+			await ensureStorageHealth();
+		},
 	});
 
 	itemSelection.registerContext({
@@ -1034,9 +1106,15 @@ onMounted(async () => {
 		requestForegroundItemSearchFocus,
 		appendSearchCharacter,
 	});
+	bindItemCatalogRecoveryListeners();
 });
 
 onBeforeUnmount(() => {
+	unbindItemCatalogRecoveryListeners();
+	if (itemCatalogRecoveryTimer) {
+		clearTimeout(itemCatalogRecoveryTimer);
+		itemCatalogRecoveryTimer = null;
+	}
 	stopItemInitializationWatcher?.();
 	stopItemInitializationWatcher = null;
 	if (initTimeout.value) clearTimeout(initTimeout.value);
@@ -1165,7 +1243,7 @@ const {
 	startCameraScanning,
 	requestForegroundItemSearchFocus,
 	onBarcodeScannedFromScannerInput,
-	reloadItems: () => itemsIntegration.get_items(true),
+	reloadItems: () => itemsIntegration.forceReloadItems(),
 });
 
 // Proxy functions for template
@@ -1177,7 +1255,7 @@ const searchItems = (term) => itemsIntegration.searchItems(term);
 const get_items = (force = false) => itemsIntegration.get_items(force);
 const loadVisibleItems = (reset = false) => itemsLoader.loadVisibleItems(reset);
 const verifyServerItemCount = () => {};
-const forceReloadItems = () => itemsIntegration.get_items(true);
+const forceReloadItems = () => itemsIntegration.forceReloadItems();
 const cancelItemDetailsRequest = () => itemDetailFetcher.cancelItemDetailsRequest();
 
 const select_item = (e: any, item: any) => {

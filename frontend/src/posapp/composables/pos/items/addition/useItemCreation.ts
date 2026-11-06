@@ -212,10 +212,13 @@ export function useItemCreation() {
 			item.base_price_list_rate = base_rate;
 		}
 
-		// Set final quantity
+		// The selector quantity is authoritative for normal item clicks. Catalog
+		// rows can retain a string/previous `qty`; treating that as authoritative
+		// silently adds one unit and prevents min-qty Pricing Rules from qualifying.
+		// Embedded barcode quantities remain authoritative for scale/barcode flows.
 		const hasBarcodeQty = item._barcode_qty;
 
-		if (!item.qty || (item.qty === 1 && !hasBarcodeQty)) {
+		if (!hasBarcodeQty) {
 			let qtyVal = requestedQty;
 			if (hide_qty_decimals) {
 				qtyVal = Math.trunc(qtyVal);

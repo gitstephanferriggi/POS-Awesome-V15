@@ -140,6 +140,7 @@ export interface POSProfile {
   currency: string;
   warehouse: string;
   selling_price_list: string;
+  ignore_pricing_rule?: boolean | number | string;
   income_account: string;
   expense_account: string;
   [key: string]: any;

@@ -81,6 +81,78 @@ describe("runtime composable lifecycle ownership", () => {
 		);
 	});
 
+	it("reconciles the current realtime state and forces HTTP health on start", async () => {
+		const networkOnline = ref(false);
+		const serverOnline = ref(false);
+		const serverConnecting = ref(true);
+		const internetReachable = ref(false);
+		const checkNetworkConnectivity = vi.fn(async () => undefined);
+		const runtime = useNetworkLifecycle({
+			networkOnline,
+			serverOnline,
+			serverConnecting,
+			internetReachable,
+			realtime: { socket: { connected: true } },
+			isManualOffline: () => false,
+			checkNetworkConnectivity,
+		});
+
+		runtime.start();
+		await vi.waitFor(() => expect(serverConnecting.value).toBe(false));
+
+		expect(networkOnline.value).toBe(navigator.onLine);
+		expect(serverOnline.value).toBe(true);
+		expect(checkNetworkConnectivity).toHaveBeenCalledWith({
+			forceImmediate: true,
+		});
+		runtime.stop();
+	});
+
+	it("releases a connecting state through the lifecycle watchdog", async () => {
+		vi.useFakeTimers();
+		const serverConnecting = ref(false);
+		const checkNetworkConnectivity = vi.fn(
+			() => new Promise<void>(() => undefined),
+		);
+		const runtime = useNetworkLifecycle({
+			networkOnline: ref(true),
+			serverOnline: ref(false),
+			serverConnecting,
+			internetReachable: ref(false),
+			realtime: { socket: { active: true } },
+			isManualOffline: () => false,
+			checkNetworkConnectivity,
+			connectingWatchdogMs: 9_000,
+		});
+
+		runtime.start();
+		expect(serverConnecting.value).toBe(true);
+		await vi.advanceTimersByTimeAsync(9_000);
+		expect(serverConnecting.value).toBe(false);
+		window.dispatchEvent(new Event("online"));
+		expect(checkNetworkConnectivity).toHaveBeenCalledTimes(2);
+		runtime.stop();
+	});
+
+	it("clears connecting in finally when the forced health check rejects", async () => {
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const serverConnecting = ref(false);
+		const runtime = useNetworkLifecycle({
+			networkOnline: ref(true),
+			serverOnline: ref(false),
+			serverConnecting,
+			internetReachable: ref(false),
+			isManualOffline: () => false,
+			checkNetworkConnectivity: vi.fn(async () => {
+				throw new Error("probe failed");
+			}),
+		});
+
+		runtime.start();
+		await vi.waitFor(() => expect(serverConnecting.value).toBe(false));
+		runtime.stop();
+	});
+
 	it("stops customer readiness watcher on unmount", async () => {
 		const profile = ref<any>({ name: "P1", modified: "1" });
 		const ensureCustomersReady = vi.fn(async () => true);

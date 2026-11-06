@@ -2,6 +2,7 @@ import type { POSProfile } from "../../types/models";
 import type { GetItemsArgs } from "../../services/itemService";
 
 export interface LoadItemsOptions {
+	bootstrap?: boolean;
 	forceServer?: boolean;
 	searchValue?: string;
 	groupFilter?: string;
@@ -59,12 +60,13 @@ export const buildLoadItemsRequest = ({
 			: "ALL";
 
 	const isInitialBootstrapRequest =
-		!forceServer &&
-		!limitSearchEnabled &&
-		!searchValue &&
-		normalizedGroup === "ALL" &&
-		itemCount === 0 &&
-		totalItemCount === 0;
+		options.bootstrap === true ||
+		(!forceServer &&
+			!limitSearchEnabled &&
+			!searchValue &&
+			normalizedGroup === "ALL" &&
+			itemCount === 0 &&
+			totalItemCount === 0);
 
 	const resolvedLimit =
 		Number.isFinite(limit) && limit! > 0
@@ -98,11 +100,13 @@ export const buildLoadItemsRequest = ({
 	const args: GetItemsArgs = {
 		pos_profile: JSON.stringify(requestProfile),
 		price_list: effectivePriceList,
-		item_group: normalizedGroup !== "ALL" ? normalizedGroup.toLowerCase() : "",
+		item_group:
+			normalizedGroup !== "ALL" ? normalizedGroup.toLowerCase() : "",
 		search_value: searchValue || "",
 		customer,
 		include_image: 1,
-		item_groups: posProfile?.item_groups?.map((g: any) => g.item_group) || [],
+		item_groups:
+			posProfile?.item_groups?.map((g: any) => g.item_group) || [],
 	};
 
 	if (typeof resolvedLimit === "number" && resolvedLimit > 0) {

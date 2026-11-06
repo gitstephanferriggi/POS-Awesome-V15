@@ -34,10 +34,16 @@
  * `db` table queries directly. Domain queue modules (`invoices`, `payments`, etc.)
  * and sync adapters import `db`, `memory`, and `persist` from this file.
  * `checkDbHealth` is called defensively before every IndexedDB operation
- * elsewhere in the layer; it will reopen, or delete and recreate, the database
- * on detected corruption.
+ * elsewhere in the layer. It attempts a non-destructive reopen and enters
+ * degraded mode when recovery would otherwise require deleting user data.
  */
 import Dexie from "dexie/dist/dexie.mjs";
+import {
+	finishStartupPhase,
+	startStartupPhase,
+	traceStartupEvent,
+} from "../utils/startupTrace";
+import { buildPosWorkerUrl } from "../posapp/utils/workerUrl";
 
 type AnyRecord = Record<string, any>;
 
@@ -86,8 +92,7 @@ const SCHEMA_V15 = {
 
 const SCHEMA_V16 = {
 	...SCHEMA_V15,
-	items:
-		"&item_code,item_name,item_group,profile_scope,item_code_lc,item_name_lc,*barcodes,*barcodes_lc,*name_keywords,*name_keywords_lc,*serials,*batches",
+	items: "&item_code,item_name,item_group,profile_scope,item_code_lc,item_name_lc,*barcodes,*barcodes_lc,*name_keywords,*name_keywords_lc,*serials,*batches",
 };
 
 export const KEY_TABLE_MAP: Record<string, string> = {
@@ -153,8 +158,15 @@ const LEGACY_KEY_TABLES: Record<string, string[]> = {
 };
 
 export const STARTUP_MEMORY_KEYS = Object.freeze([
+	"offline_invoices",
+	"offline_customers",
+	"offline_payments",
+	"offline_cash_movements",
 	"manual_offline",
 	"invoice_outbox_mode",
+	"pos_opening_storage",
+	"opening_dialog_storage",
+	"pos_last_sync_totals",
 	"bootstrap_snapshot",
 	"bootstrap_snapshot_status",
 	"bootstrap_limited_mode",
@@ -277,18 +289,8 @@ db.version(14).stores(SCHEMA_V14);
 db.version(15).stores(SCHEMA_V15);
 db.version(16).stores(SCHEMA_V16);
 
+// Start the worker only after the main database has opened.
 let persistWorker: Worker | null = null;
-if (typeof Worker !== "undefined") {
-	try {
-		// Use the plain URL so the service worker cache matches when offline
-		const workerUrl =
-			"/assets/posawesome/dist/js/posapp/workers/itemWorker.js";
-		persistWorker = new Worker(workerUrl, { type: "classic" });
-	} catch (e) {
-		console.error("Failed to init persist worker", e);
-		persistWorker = null;
-	}
-}
 
 const MEMORY_DEFAULTS: AnyRecord = {
 	offline_invoices: [],
@@ -455,10 +457,11 @@ type PersistWorkerBatch = {
 	entries: PersistEntry[];
 	resolve: () => void;
 	reject: (_error: unknown) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	timeout: ReturnType<typeof setTimeout> | null;
 };
 
-const PERSIST_WORKER_TIMEOUT_MS = 10_000;
+export const PERSIST_WORKER_TIMEOUT_MS = 10_000;
+export const PERSIST_WORKER_READY_TIMEOUT_MS = 30_000;
 const pendingPersistEntries = new Map<string, unknown>();
 const inFlightWorkerBatches = new Map<number, PersistWorkerBatch>();
 const activePersistOperations = new Set<Promise<void>>();
@@ -466,8 +469,17 @@ let persistFlushScheduled = false;
 let nextPersistBatchId = 1;
 let persistWorkerHealthy = Boolean(persistWorker);
 let directPersistChain: Promise<void> = Promise.resolve();
+let persistWorkerReadyPromise: Promise<void> | null = null;
+let resolvePersistWorkerReady: (() => void) | null = null;
+let rejectPersistWorkerReady: ((_error: unknown) => void) | null = null;
+let persistWorkerReadyTimeout: ReturnType<typeof setTimeout> | null = null;
 
-export async function hydrateMemoryKeys(keys: readonly string[]): Promise<void> {
+export async function hydrateMemoryKeys(
+	keys: readonly string[],
+): Promise<void> {
+	const phase = startStartupPhase("indexeddb.memory_hydration", {
+		keys: keys.length,
+	});
 	const uniqueKeys = Array.from(new Set(keys)).filter((key) =>
 		Object.prototype.hasOwnProperty.call(memory, key),
 	);
@@ -492,18 +504,22 @@ export async function hydrateMemoryKeys(keys: readonly string[]): Promise<void> 
 	const primaryRecords = new Map<string, PersistedValueRecord>();
 	const legacyRecords = new Map<string, PersistedValueRecord>();
 	await Promise.all([
-		...Array.from(primaryGroups.entries()).map(async ([tableName, tableKeys]) => {
-			const rows = (await db.table(tableName).bulkGet(tableKeys)) as PersistedValueRecord[];
-			tableKeys.forEach((key, index) => {
-				primaryRecords.set(key, rows[index]);
-			});
-		}),
+		...Array.from(primaryGroups.entries()).map(
+			async ([tableName, tableKeys]) => {
+				const rows = (await db
+					.table(tableName)
+					.bulkGet(tableKeys)) as PersistedValueRecord[];
+				tableKeys.forEach((key, index) => {
+					primaryRecords.set(key, rows[index]);
+				});
+			},
+		),
 		(async () => {
 			// One keyval read covers both keys owned by keyval and legacy fallback
 			// rows left behind before KEY_TABLE_MAP routed them elsewhere.
-			const rows = (await db.table("keyval").bulkGet(
-				uniqueKeys,
-			)) as PersistedValueRecord[];
+			const rows = (await db
+				.table("keyval")
+				.bulkGet(uniqueKeys)) as PersistedValueRecord[];
 			uniqueKeys.forEach((key, index) => {
 				legacyRecords.set(key, rows[index]);
 			});
@@ -533,14 +549,29 @@ export async function hydrateMemoryKeys(keys: readonly string[]): Promise<void> 
 			memory[key] = stored.value;
 		}
 	}
+	finishStartupPhase(phase, "ok", {
+		hydratedKeys: uniqueKeys.length,
+		tables: Array.from(primaryGroups.keys()),
+	});
 }
 
 async function initializeMemoryKeys(keys: readonly string[]) {
+	const phase = startStartupPhase("indexeddb.open_and_hydrate", {
+		keys: keys.length,
+		requestedVersion: 16,
+	});
 	try {
 		await db.open();
 		await hydrateMemoryKeys(keys);
+		finishStartupPhase(phase, "ok", {
+			databaseVersion: db.verno,
+			keys: keys.length,
+		});
+		return true;
 	} catch (error) {
 		console.error("Failed to initialize offline DB", error);
+		finishStartupPhase(phase, "error", { error, keys: keys.length });
+		return false;
 	}
 }
 
@@ -570,7 +601,22 @@ async function runPostHydrationTasks() {
 	}
 }
 
-export const startupInitPromise = initializeMemoryKeys(STARTUP_MEMORY_KEYS);
+const startupStoragePhase = startStartupPhase("indexeddb.startup_ready", {
+	keys: STARTUP_MEMORY_KEYS.length,
+});
+export const startupInitPromise = initializeMemoryKeys(
+	STARTUP_MEMORY_KEYS,
+).then(
+	(ready) => {
+		finishStartupPhase(startupStoragePhase, ready ? "ok" : "error", {
+			databaseVersion: db.verno,
+			degraded: !ready,
+		});
+	},
+	(error) => {
+		finishStartupPhase(startupStoragePhase, "error", { error });
+	},
+);
 
 export const initPromise = startupInitPromise.then(
 	() =>
@@ -580,11 +626,22 @@ export const initPromise = startupInitPromise.then(
 				const remainingKeys = Object.keys(memory).filter(
 					(key) => !startupKeys.has(key),
 				);
-				void initializeMemoryKeys(remainingKeys).then(async () => {
+				void (async () => {
+					await initializeMemoryKeys(
+						remainingKeys.filter((key) => !LARGE_KEYS.has(key)),
+					);
+					for (const key of remainingKeys.filter((key) =>
+						LARGE_KEYS.has(key),
+					)) {
+						await new Promise<void>((resume) =>
+							setTimeout(resume, 0),
+						);
+						await initializeMemoryKeys([key]);
+					}
 					await runPostHydrationTasks();
 					scheduleIdleOfflinePruning();
 					resolve();
-				});
+				})();
 			});
 		}),
 );
@@ -688,7 +745,17 @@ function disablePersistWorker(error: unknown) {
 		return;
 	}
 	persistWorkerHealthy = false;
-	console.error("Persistence worker disabled; using main-thread fallback", error);
+	if (persistWorkerReadyTimeout) clearTimeout(persistWorkerReadyTimeout);
+	persistWorkerReadyTimeout = null;
+	rejectPersistWorkerReady?.(error);
+	resolvePersistWorkerReady = null;
+	rejectPersistWorkerReady = null;
+	persistWorkerReadyPromise = null;
+	traceStartupEvent("persistence_worker.disabled", "error", { error });
+	console.error(
+		"Persistence worker disabled; using main-thread fallback",
+		error,
+	);
 	try {
 		persistWorker?.terminate();
 	} catch {
@@ -697,16 +764,15 @@ function disablePersistWorker(error: unknown) {
 	persistWorker = null;
 }
 
-function settleWorkerBatch(
-	batchId: number,
-	error?: unknown,
-) {
+function settleWorkerBatch(batchId: number, error?: unknown) {
 	const batch = inFlightWorkerBatches.get(batchId);
 	if (!batch) {
 		return;
 	}
 	inFlightWorkerBatches.delete(batchId);
-	clearTimeout(batch.timeout);
+	if (batch.timeout) {
+		clearTimeout(batch.timeout);
+	}
 
 	if (!error) {
 		batch.resolve();
@@ -724,10 +790,30 @@ function failAllWorkerBatches(error: unknown) {
 	}
 }
 
-if (persistWorker) {
-	persistWorker.onmessage = (event: MessageEvent) => {
+function bindPersistWorker(worker: Worker) {
+	worker.onmessage = (event: MessageEvent) => {
 		const data = event.data || {};
+		if (data.type === "persistence_worker_ready") {
+			if (persistWorkerReadyTimeout) {
+				clearTimeout(persistWorkerReadyTimeout);
+				persistWorkerReadyTimeout = null;
+			}
+			resolvePersistWorkerReady?.();
+			resolvePersistWorkerReady = null;
+			rejectPersistWorkerReady = null;
+			traceStartupEvent("persistence_worker.ready", "ok", {
+				databaseVersion: data.databaseVersion,
+				openDurationMs: data.openDurationMs,
+			});
+			return;
+		}
 		if (data.type === "persisted_batch") {
+			traceStartupEvent("persistence_worker.batch", "ok", {
+				batchId: Number(data.batchId),
+				durationMs: data.durationMs,
+				tables: data.tables,
+				recordCount: data.recordCount,
+			});
 			settleWorkerBatch(Number(data.batchId));
 		} else if (data.type === "persist_batch_failed") {
 			failAllWorkerBatches(
@@ -738,53 +824,126 @@ if (persistWorker) {
 			);
 		}
 	};
-	persistWorker.onerror = (event: ErrorEvent) => {
+	worker.onerror = (event: ErrorEvent) => {
 		failAllWorkerBatches(event.error || new Error(event.message));
 	};
 }
+
+function initializePersistWorker() {
+	if (persistWorker || typeof Worker === "undefined") return;
+	const phase = startStartupPhase("persistence_worker.create", {
+		databaseVersion: db.verno,
+	});
+	try {
+		persistWorker = new Worker(
+			buildPosWorkerUrl("itemWorker.js", { includeStartupTrace: true }),
+			{ type: "classic" },
+		);
+		persistWorkerHealthy = true;
+		persistWorkerReadyPromise = new Promise<void>((resolve, reject) => {
+			resolvePersistWorkerReady = resolve;
+			rejectPersistWorkerReady = reject;
+		});
+		// The rejection is observed by every queued batch. This side handler only
+		// prevents an unhandled rejection when no persistence work was queued.
+		void persistWorkerReadyPromise.catch(() => undefined);
+		persistWorkerReadyTimeout = setTimeout(() => {
+			const error = new Error(
+				`Persistence worker did not become ready within ${PERSIST_WORKER_READY_TIMEOUT_MS} ms`,
+			);
+			traceStartupEvent("persistence_worker.ready", "timeout", {
+				timeoutMs: PERSIST_WORKER_READY_TIMEOUT_MS,
+			});
+			failAllWorkerBatches(error);
+		}, PERSIST_WORKER_READY_TIMEOUT_MS);
+		bindPersistWorker(persistWorker);
+		finishStartupPhase(phase, "ok");
+	} catch (error) {
+		persistWorker = null;
+		persistWorkerHealthy = false;
+		finishStartupPhase(phase, "error", { error });
+		console.error("Failed to init persist worker", error);
+	}
+}
+
+void startupInitPromise.finally(initializePersistWorker);
 
 function dispatchPersistBatch(entries: PersistEntry[]) {
 	if (!entries.length) {
 		return Promise.resolve();
 	}
 
-	if (!persistWorker || !persistWorkerHealthy) {
+	if (!persistWorker || !persistWorkerHealthy || !persistWorkerReadyPromise) {
 		return queueDirectPersist(entries);
 	}
 
+	const readyPromise = persistWorkerReadyPromise;
 	const batchId = nextPersistBatchId++;
+	const keys = entries.map((entry) => entry.key);
+	const tables = Array.from(new Set(keys.map(tableForKey)));
+	traceStartupEvent("persistence_worker.batch", "info", {
+		batchId,
+		keys,
+		tables,
+		recordCount: entries.length,
+		state: "queued_for_worker_ready",
+	});
 	const operation = new Promise<void>((resolve, reject) => {
-		const timeout = setTimeout(() => {
-			failAllWorkerBatches(
-				new Error(`Persistence worker batch ${batchId} timed out`),
-			);
-		}, PERSIST_WORKER_TIMEOUT_MS);
 		inFlightWorkerBatches.set(batchId, {
 			entries,
 			resolve,
 			reject,
-			timeout,
+			timeout: null,
 		});
 
-		try {
-			persistWorker?.postMessage({
-				type: "persist_batch",
-				batchId,
-				entries,
-			});
-		} catch (error) {
-			failAllWorkerBatches(error);
-		}
+		void readyPromise
+			.then(() => {
+				const batch = inFlightWorkerBatches.get(batchId);
+				if (!batch) return;
+				if (!persistWorker || !persistWorkerHealthy) {
+					throw new Error(
+						"Persistence worker became unavailable before dispatch",
+					);
+				}
+
+				traceStartupEvent("persistence_worker.batch", "start", {
+					batchId,
+					keys,
+					tables,
+					recordCount: entries.length,
+					timeoutMs: PERSIST_WORKER_TIMEOUT_MS,
+				});
+				batch.timeout = setTimeout(() => {
+					traceStartupEvent("persistence_worker.batch", "timeout", {
+						batchId,
+						keys,
+						tables,
+						recordCount: entries.length,
+						timeoutMs: PERSIST_WORKER_TIMEOUT_MS,
+					});
+					failAllWorkerBatches(
+						new Error(
+							`Persistence worker batch ${batchId} timed out`,
+						),
+					);
+				}, PERSIST_WORKER_TIMEOUT_MS);
+				persistWorker.postMessage({
+					type: "persist_batch",
+					batchId,
+					entries,
+				});
+			})
+			.catch((error) => settleWorkerBatch(batchId, error));
 	});
 
 	return operation;
 }
 
 function drainPendingPersistEntries() {
-	const entries = Array.from(
-		pendingPersistEntries,
-		([key, value]) => ({ key, value }),
-	);
+	const entries = Array.from(pendingPersistEntries, ([key, value]) => ({
+		key,
+		value,
+	}));
 	pendingPersistEntries.clear();
 	return entries;
 }
@@ -890,14 +1049,29 @@ async function pruneInvoiceOutboxRows(cutoff: number, cutoffIso: string) {
 	for (const status of ["acknowledged", "dead_letter"]) {
 		deleted += await pruneCollectionInChunks(
 			"invoice_outbox",
-			(table) => statusDateRange(table, "[status+acknowledged_at]", status, cutoffIso),
+			(table) =>
+				statusDateRange(
+					table,
+					"[status+acknowledged_at]",
+					status,
+					cutoffIso,
+				),
 			(row) =>
 				row.status === status &&
-				isOlderThan(row.acknowledged_at || row.updated_at || row.created_at, cutoff),
+				isOlderThan(
+					row.acknowledged_at || row.updated_at || row.created_at,
+					cutoff,
+				),
 		);
 		deleted += await pruneCollectionInChunks(
 			"invoice_outbox",
-			(table) => statusDateRange(table, "[status+updated_at]", status, cutoffIso),
+			(table) =>
+				statusDateRange(
+					table,
+					"[status+updated_at]",
+					status,
+					cutoffIso,
+				),
 			(row) =>
 				row.status === status &&
 				!row.acknowledged_at &&
@@ -905,7 +1079,13 @@ async function pruneInvoiceOutboxRows(cutoff: number, cutoffIso: string) {
 		);
 		deleted += await pruneCollectionInChunks(
 			"invoice_outbox",
-			(table) => statusDateRange(table, "[status+created_at]", status, cutoffIso),
+			(table) =>
+				statusDateRange(
+					table,
+					"[status+created_at]",
+					status,
+					cutoffIso,
+				),
 			(row) =>
 				row.status === status &&
 				!row.acknowledged_at &&
@@ -920,14 +1100,21 @@ async function pruneWriteQueueRows(cutoff: number, cutoffIso: string) {
 	const status = "synced";
 	let deleted = await pruneCollectionInChunks(
 		"write_queue",
-		(table) => statusDateRange(table, "[status+last_attempt_at]", status, cutoffIso),
+		(table) =>
+			statusDateRange(
+				table,
+				"[status+last_attempt_at]",
+				status,
+				cutoffIso,
+			),
 		(row) =>
 			row.status === status &&
 			isOlderThan(row.last_attempt_at || row.created_at, cutoff),
 	);
 	deleted += await pruneCollectionInChunks(
 		"write_queue",
-		(table) => statusDateRange(table, "[status+created_at]", status, cutoffIso),
+		(table) =>
+			statusDateRange(table, "[status+created_at]", status, cutoffIso),
 		(row) =>
 			row.status === status &&
 			!row.last_attempt_at &&
@@ -945,7 +1132,8 @@ async function pruneSyncStateRows(cutoff: number, cutoffIso: string) {
 	deleted += await pruneCollectionInChunks(
 		"sync_state",
 		(table) => table.where("key").startsWith("posa_sync_state::"),
-		(row) => !row.updated_at && isOlderThan(row.value?.lastSyncedAt, cutoff),
+		(row) =>
+			!row.updated_at && isOlderThan(row.value?.lastSyncedAt, cutoff),
 	);
 	return deleted;
 }
@@ -957,7 +1145,8 @@ async function pruneKeyvalPrefixRows(
 	return pruneCollectionInChunks(
 		"keyval",
 		(table) => table.where("key").startsWith(prefix),
-		(row) => isOlderThan(row.value?.created_at || row.value?.updated_at, cutoff),
+		(row) =>
+			isOlderThan(row.value?.created_at || row.value?.updated_at, cutoff),
 	);
 }
 
@@ -988,7 +1177,10 @@ export async function pruneOfflineStorage(
 	result.writeQueue = await pruneWriteQueueRows(cutoff, cutoffIso);
 	result.syncState = await pruneSyncStateRows(cutoff, cutoffIso);
 	result.tombstones = await pruneKeyvalPrefixRows("tombstone:", cutoff);
-	result.localTelemetry = await pruneKeyvalPrefixRows("local_telemetry:", cutoff);
+	result.localTelemetry = await pruneKeyvalPrefixRows(
+		"local_telemetry:",
+		cutoff,
+	);
 
 	return result;
 }
@@ -1203,16 +1395,87 @@ export async function repairDbAfterFailedHealthCheck(error?: unknown) {
 	} catch (reopenError) {
 		console.error("DB reopen failed", reopenError);
 		if (isCorruptionError(reopenError) || isCorruptionError(error)) {
-			try {
-				await Dexie.delete("posawesome_offline");
-				await db.open();
-				return true;
-			} catch (recreateError) {
-				console.error("DB recreate failed", recreateError);
-			}
+			// Never delete a POS database automatically. It may contain drafts,
+			// invoice intents, or unsynced payments. Recovery is an explicit
+			// export-first operator action.
+			traceStartupEvent("indexeddb.repair_required", "error", {
+				error,
+				reopenError,
+				automaticDeleteSuppressed: true,
+			});
 		}
 	}
 	return false;
+}
+
+export async function getOfflineStorageDiagnostics() {
+	const phase = startStartupPhase("indexeddb.diagnostics");
+	try {
+		if (!db.isOpen()) await db.open();
+		const tableCounts = Object.fromEntries(
+			await Promise.all(
+				db.tables.map(async (table) => [
+					table.name,
+					await table.count(),
+				]),
+			),
+		);
+		const estimate =
+			typeof navigator !== "undefined" && navigator.storage?.estimate
+				? await navigator.storage.estimate()
+				: {};
+		const result = {
+			database: db.name,
+			version: db.verno,
+			tableCounts,
+			usage: estimate.usage ?? null,
+			quota: estimate.quota ?? null,
+		};
+		finishStartupPhase(phase, "ok", result);
+		return result;
+	} catch (error) {
+		finishStartupPhase(phase, "error", { error });
+		throw error;
+	}
+}
+
+export async function exportOfflineRecoveryData() {
+	if (!db.isOpen()) await db.open();
+	const [invoiceOutbox, writeQueue, legacyQueue] = await Promise.all([
+		db.table("invoice_outbox").toArray(),
+		db.table("write_queue").toArray(),
+		db.table("queue").toArray(),
+	]);
+	const invoiceIntentJournal: Record<string, unknown> = {};
+	if (typeof localStorage !== "undefined") {
+		for (let index = 0; index < localStorage.length; index += 1) {
+			const key = localStorage.key(index);
+			if (!key?.startsWith("posa_invoice_intent_")) continue;
+			try {
+				invoiceIntentJournal[key] = JSON.parse(
+					localStorage.getItem(key) || "null",
+				);
+			} catch {
+				invoiceIntentJournal[key] = localStorage.getItem(key);
+			}
+		}
+	}
+	return {
+		exportedAt: new Date().toISOString(),
+		database: db.name,
+		version: db.verno,
+		invoiceOutbox,
+		writeQueue,
+		legacyQueue,
+		invoiceIntentJournal,
+	};
+}
+
+if (typeof window !== "undefined") {
+	(window as AnyRecord).__POS_OFFLINE_DIAGNOSTICS__ = {
+		inspect: getOfflineStorageDiagnostics,
+		exportRecoveryData: exportOfflineRecoveryData,
+	};
 }
 
 export async function checkDbHealth() {
@@ -1240,7 +1503,11 @@ function legacyQueuePruneCutoff(
 ) {
 	return (
 		(options.now || Date.now()) -
-		(options.maxAgeDays || LEGACY_QUEUE_PRUNE_MAX_AGE_DAYS) * 24 * 60 * 60 * 1000
+		(options.maxAgeDays || LEGACY_QUEUE_PRUNE_MAX_AGE_DAYS) *
+			24 *
+			60 *
+			60 *
+			1000
 	);
 }
 

@@ -38,6 +38,7 @@ import { computed, reactive, ref } from "vue";
 // @ts-ignore
 import {
 	isOffline,
+	memoryInitPromise,
 	savePricingRulesSnapshot,
 	getCachedPricingRulesSnapshot,
 	clearPricingRulesSnapshot,
@@ -149,6 +150,7 @@ export const usePricingRulesStore = defineStore("pricing-rules", () => {
 	const staleAt = ref<string | null>(null);
 	const inflightRequests = new Map<string, Promise<void>>();
 	let latestRequestId = 0;
+	let hydrationPromise: Promise<void> | null = null;
 
 	const hasSnapshot = computed(
 		() => !!contextKey.value && !!lastSyncedAt.value,
@@ -202,29 +204,44 @@ export const usePricingRulesStore = defineStore("pricing-rules", () => {
 		indexes.general = general;
 	};
 
-	const hydrateFromCache = () => {
+	const hydrateFromCache = async () => {
 		if (ready.value) {
 			return;
 		}
+		if (!hydrationPromise) {
+			hydrationPromise = (async () => {
+				try {
+					// IndexedDB populates the synchronous memory facade asynchronously at
+					// startup. Await it so a hard refresh while offline cannot permanently
+					// initialise this store with an empty snapshot.
+					await memoryInitPromise;
+					const cached = getCachedPricingRulesSnapshot();
+					if (cached) {
+						rules.value = Array.isArray(cached.snapshot)
+							? cached.snapshot.map(normaliseRule)
+							: [];
+						contextKey.value = cached.context || null;
+						lastSyncedAt.value = cached.lastSync || null;
+						staleAt.value = cached.staleAt || null;
+						indexRules();
+					}
+				} catch (error) {
+					console.error("Failed to hydrate pricing rules cache", error);
+				} finally {
+					ready.value = true;
+				}
+			})();
+		}
 		try {
-			const cached = getCachedPricingRulesSnapshot();
-			if (cached) {
-				rules.value = Array.isArray(cached.snapshot)
-					? cached.snapshot.map(normaliseRule)
-					: [];
-				contextKey.value = cached.context || null;
-				lastSyncedAt.value = cached.lastSync || null;
-				staleAt.value = cached.staleAt || null;
-				indexRules();
-			}
-		} catch (error) {
-			console.error("Failed to hydrate pricing rules cache", error);
+			await hydrationPromise;
 		} finally {
-			ready.value = true;
+			if (ready.value) {
+				hydrationPromise = null;
+			}
 		}
 	};
 
-	hydrateFromCache();
+	void hydrateFromCache();
 
 	const setSnapshot = (snapshot: any[], ctxKey: string) => {
 		rules.value = Array.isArray(snapshot)
@@ -259,7 +276,7 @@ export const usePricingRulesStore = defineStore("pricing-rules", () => {
 		ctx: RuleContext = {},
 		options: { force?: boolean } = {},
 	) => {
-		hydrateFromCache();
+		await hydrateFromCache();
 		const desiredKey = buildContextKey(ctx);
 		const force = options.force === true;
 
@@ -329,7 +346,7 @@ export const usePricingRulesStore = defineStore("pricing-rules", () => {
 	};
 
 	const invalidateIfContextChanges = async (ctx: RuleContext = {}) => {
-		hydrateFromCache();
+		await hydrateFromCache();
 		const targetKey = buildContextKey(ctx);
 		if (contextKey.value !== targetKey) {
 			await ensureActiveRules(ctx, { force: false });

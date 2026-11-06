@@ -76,6 +76,26 @@ describe("useItemAddition new line behavior", () => {
 		expect(context.items[0].qty).toBe(2);
 	});
 
+	it("uses the selector quantity even when the catalog row carries a stale qty", async () => {
+		const api = useItemAddition();
+		const context = createContext(false);
+		const item = { ...createItem(), qty: "1" } as any;
+
+		await api.prepareItemForCart(item, 5, context);
+
+		expect(item.qty).toBe(5);
+	});
+
+	it("preserves an embedded barcode quantity instead of the selector quantity", async () => {
+		const api = useItemAddition();
+		const context = createContext(false);
+		const item = { ...createItem(), qty: 2.5, _barcode_qty: true } as any;
+
+		await api.prepareItemForCart(item, 5, context);
+
+		expect(item.qty).toBe(2.5);
+	});
+
 	it("refreshes line amount when a repeated click merges quantity", async () => {
 		const api = useItemAddition();
 		const context = createContext(false);

@@ -27,6 +27,7 @@ describe("get_invoice_doc", () => {
 				company: "Test Company",
 				name: "Main POS",
 				currency: "PKR",
+				ignore_pricing_rule: 1,
 				payments: [{ mode_of_payment: "Cash", account: "Cash", type: "Cash", default: 1 }],
 			},
 			selected_currency: "PKR",
@@ -56,6 +57,7 @@ describe("get_invoice_doc", () => {
 			formatDateForBackend: (value: string) => value,
 			invoice_doc: {
 				name: "SINV-DRAFT",
+				pricing_rules: [{ pricing_rule: "TXN-10", rule_applied: 1 }],
 				customer: "CUST-OLD",
 				customer_name: "Old Customer",
 				payments: [],
@@ -67,6 +69,8 @@ describe("get_invoice_doc", () => {
 
 		expect(doc.customer).toBe("CUST-NEW");
 		expect(doc.customer_name).toBe("New Customer");
+		expect(doc.ignore_pricing_rule).toBe(1);
+		expect(doc.pricing_rules).toEqual([{ pricing_rule: "TXN-10", rule_applied: 1 }]);
 	});
 
 	it("clears stale party details when customer changes on a reused source doc", () => {

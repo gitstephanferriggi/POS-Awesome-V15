@@ -45,7 +45,7 @@ type CallOfflineSyncMethod = (
 type RunSupportedOfflineSyncResourceArgs = {
 	resource: SyncResourceDefinition;
 	posProfile: SupportedSyncProfile;
-	schemaVersion: string;
+	schemaVersion?: string | null;
 	getPersistedState: (
 		_resourceId: SyncResourceId,
 	) => Promise<SyncResourceState | null>;
@@ -100,10 +100,9 @@ export function buildOfflineSyncProfile(
 	};
 }
 
-export async function runSupportedOfflineSyncResource({
+async function runSupportedOfflineSyncResourceOnce({
 	resource,
 	posProfile,
-	schemaVersion,
 	getPersistedState,
 	callOfflineSyncMethod,
 }: RunSupportedOfflineSyncResourceArgs) {
@@ -111,7 +110,9 @@ export async function runSupportedOfflineSyncResource({
 	const sharedArgs = {
 		posProfile,
 		watermark: getPersistedWatermark(persistedState),
-		schemaVersion,
+		// Resource endpoints evolve independently. Persisted server state is the
+		// protocol authority; a global frontend date cannot represent them all.
+		schemaVersion: persistedState?.schemaVersion || null,
 	};
 
 	switch (resource.id) {
@@ -204,12 +205,7 @@ export async function runSupportedOfflineSyncResource({
 		case "item_prices":
 			return syncItemPricesResource({
 				...sharedArgs,
-				fetcher: ({
-					posProfile,
-					watermark,
-					offset,
-					schemaVersion,
-				}) =>
+				fetcher: ({ posProfile, watermark, offset, schemaVersion }) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.item_prices.sync_item_prices",
 						{
@@ -223,12 +219,7 @@ export async function runSupportedOfflineSyncResource({
 		case "pricing_rules":
 			return syncPricingRulesResource({
 				...sharedArgs,
-				fetcher: ({
-					posProfile,
-					watermark,
-					offset,
-					schemaVersion,
-				}) =>
+				fetcher: ({ posProfile, watermark, offset, schemaVersion }) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.pricing_rules.sync_pricing_rules",
 						{
@@ -244,7 +235,7 @@ export async function runSupportedOfflineSyncResource({
 				...sharedArgs,
 				// Stock has its own snapshot revision. Keep it after the initial
 				// rebuild instead of repeatedly sending the global manifest revision.
-				schemaVersion: persistedState?.schemaVersion || schemaVersion,
+				schemaVersion: persistedState?.schemaVersion || null,
 				fetcher: ({ posProfile, watermark, startAfter, limit, schemaVersion }) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.stock.sync_stock",
@@ -260,7 +251,13 @@ export async function runSupportedOfflineSyncResource({
 		case "customers":
 			return syncCustomersResource({
 				...sharedArgs,
-				fetcher: ({ posProfile, watermark, startAfter, limit, schemaVersion }) =>
+				fetcher: ({
+					posProfile,
+					watermark,
+					startAfter,
+					limit,
+					schemaVersion,
+				}) =>
 					callOfflineSyncMethod(
 						"posawesome.posawesome.api.offline_sync.customers.sync_customers",
 						{
@@ -279,4 +276,37 @@ export async function runSupportedOfflineSyncResource({
 				status: "idle",
 			};
 	}
+}
+
+export async function runSupportedOfflineSyncResource(
+	args: RunSupportedOfflineSyncResourceArgs,
+) {
+	const persistedState = await args.getPersistedState(args.resource.id);
+	const firstResult = await runSupportedOfflineSyncResourceOnce({
+		...args,
+		getPersistedState: async () => persistedState,
+	});
+	const firstResponse =
+		"response" in firstResult ? firstResult.response : null;
+
+	if (
+		!firstResponse?.full_resync_required ||
+		args.resource.fullResyncSupported === false
+	) {
+		return firstResult;
+	}
+
+	// The first pass invalidated the incompatible local representation. Finish
+	// its clean rebuild now so resource health does not remain "limited" until
+	// a later timer tick.
+	return runSupportedOfflineSyncResourceOnce({
+		...args,
+		getPersistedState: async () =>
+			({
+				...(persistedState || {}),
+				resourceId: args.resource.id,
+				watermark: null,
+				schemaVersion: firstResponse.schema_version || null,
+			}) as SyncResourceState,
+	});
 }

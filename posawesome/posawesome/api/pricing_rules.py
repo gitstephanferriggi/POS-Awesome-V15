@@ -15,6 +15,8 @@ from frappe.query_builder import DocType
 from frappe.query_builder.functions import Coalesce
 from frappe.utils import cint, flt, getdate, nowdate
 
+from posawesome.posawesome.api.pricing_rule_values import resolve_line_pricing_values
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -501,13 +503,11 @@ def reconcile_line_prices(cart_payload: dict | str | None = None):
 
     # Process results with validation
     for i, (line, args, details) in enumerate(temp_results):
-        # Initialize variables with defaults from details or args to prevent UnboundLocalError
-        # These are the default values if no rules are valid or applied
-        price_list_rate = flt(details.get("price_list_rate") or args.price_list_rate)
-        discount_amount = flt(details.get("discount_amount") or 0)
-        discount_percentage = flt(details.get("discount_percentage") or 0)
-        # Default rate calculation if no rules apply
-        rate = flt(details.get("rate") or (price_list_rate - discount_amount))
+        pricing_values = resolve_line_pricing_values(details, args.price_list_rate)
+        price_list_rate = flt(pricing_values["price_list_rate"])
+        discount_amount = flt(pricing_values["discount_amount"])
+        discount_percentage = flt(pricing_values["discount_percentage"])
+        rate = flt(pricing_values["rate"])
 
         applied_rules = []
         if details.get("pricing_rules"):

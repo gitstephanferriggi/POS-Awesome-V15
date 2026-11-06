@@ -196,11 +196,14 @@ describe("offline sync resource runner", () => {
 				name: "POS-1",
 			},
 			schemaVersion: "2026-04-09",
-			getPersistedState: vi.fn(async () => ({
-				resourceId: "item_prices",
-				status: "fresh",
-				watermark: "old-item-price-watermark",
-			} as any)),
+			getPersistedState: vi.fn(
+				async () =>
+					({
+						resourceId: "item_prices",
+						status: "fresh",
+						watermark: "old-item-price-watermark",
+					}) as any,
+			),
 			callOfflineSyncMethod,
 		});
 

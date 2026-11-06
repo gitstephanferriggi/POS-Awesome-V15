@@ -16,22 +16,28 @@ const cacheMocks = vi.hoisted(() => ({
 }));
 
 const bootstrapSnapshotMocks = vi.hoisted(() => ({
-	refreshBootstrapSnapshotFromCaches: vi.fn(({ currentSnapshot, registerData, cacheState }) => ({
-		...(currentSnapshot || {}),
-		build_version: currentSnapshot?.build_version || "build-1",
-		profile_name: registerData?.pos_profile?.name || currentSnapshot?.profile_name || null,
-		profile_modified:
-			registerData?.pos_profile?.modified ||
-			currentSnapshot?.profile_modified ||
-			null,
-		prerequisites: {
-			...(currentSnapshot?.prerequisites || {}),
-			tax_inclusive:
-				cacheState?.taxInclusive === null || typeof cacheState?.taxInclusive === "undefined"
-					? "missing"
-					: "ready",
-		},
-	})),
+	refreshBootstrapSnapshotFromCaches: vi.fn(
+		({ currentSnapshot, registerData, cacheState }) => ({
+			...(currentSnapshot || {}),
+			build_version: currentSnapshot?.build_version || "build-1",
+			profile_name:
+				registerData?.pos_profile?.name ||
+				currentSnapshot?.profile_name ||
+				null,
+			profile_modified:
+				registerData?.pos_profile?.modified ||
+				currentSnapshot?.profile_modified ||
+				null,
+			prerequisites: {
+				...(currentSnapshot?.prerequisites || {}),
+				tax_inclusive:
+					cacheState?.taxInclusive === null ||
+					typeof cacheState?.taxInclusive === "undefined"
+						? "missing"
+						: "ready",
+			},
+		}),
+	),
 }));
 
 const syncStateMocks = vi.hoisted(() => ({
@@ -116,7 +122,9 @@ describe("boot-critical offline sync adapters", () => {
 		});
 
 		expect(cacheMocks.setTaxInclusiveSetting).toHaveBeenCalledWith(false);
-		expect(bootstrapSnapshotMocks.refreshBootstrapSnapshotFromCaches).toHaveBeenCalledWith(
+		expect(
+			bootstrapSnapshotMocks.refreshBootstrapSnapshotFromCaches,
+		).toHaveBeenCalledWith(
 			expect.objectContaining({
 				registerData: {
 					pos_profile: {
@@ -131,11 +139,14 @@ describe("boot-critical offline sync adapters", () => {
 			}),
 		);
 		expect(cacheMocks.setBootstrapSnapshot).toHaveBeenCalled();
-		expect(cacheMocks.savePriceListMetaCache).toHaveBeenCalledWith("POS-1", {
-			price_lists: ["Retail"],
-			selected_price_list: "Retail",
-			price_list_currency: "PKR",
-		});
+		expect(cacheMocks.savePriceListMetaCache).toHaveBeenCalledWith(
+			"POS-1",
+			{
+				price_lists: ["Retail"],
+				selected_price_list: "Retail",
+				price_list_currency: "PKR",
+			},
+		);
 		expect(syncStateMocks.setSyncResourceState).toHaveBeenCalledWith(
 			expect.objectContaining({
 				resourceId: "bootstrap_config",
@@ -222,10 +233,10 @@ describe("boot-critical offline sync adapters", () => {
 			})),
 		});
 
-		expect(cacheMocks.saveCurrencyOptionsCache).toHaveBeenCalledWith("POS-1", [
-			{ name: "PKR" },
-			{ name: "USD" },
-		]);
+		expect(cacheMocks.saveCurrencyOptionsCache).toHaveBeenCalledWith(
+			"POS-1",
+			[{ name: "PKR" }, { name: "USD" }],
+		);
 		expect(cacheMocks.saveExchangeRateCache).toHaveBeenCalledWith({
 			profileName: "POS-1",
 			company: "Test Co",
@@ -234,8 +245,12 @@ describe("boot-critical offline sync adapters", () => {
 			date: "2026-04-09",
 			exchange_rate: 279.5,
 		});
-		expect(repositoryMocks.currencyRateRepository.clear).toHaveBeenCalledOnce();
-		expect(repositoryMocks.currencyRateRepository.upsertMany).toHaveBeenCalledWith([
+		expect(
+			repositoryMocks.currencyRateRepository.clear,
+		).toHaveBeenCalledOnce();
+		expect(
+			repositoryMocks.currencyRateRepository.upsertMany,
+		).toHaveBeenCalledWith([
 			expect.objectContaining({
 				name: "FX-USD-PKR",
 				profile_name: "POS-1",
@@ -325,6 +340,7 @@ describe("boot-critical offline sync adapters", () => {
 				company: "Test Co",
 				modified: "2026-04-09T10:05:00",
 			},
+			watermark: "legacy-watermark",
 			fetcher: vi.fn(async () => ({
 				schema_version: "2026-04-09",
 				full_resync_required: true,
@@ -336,10 +352,12 @@ describe("boot-critical offline sync adapters", () => {
 		});
 
 		expect(result.status).toBe("limited");
+		expect(result.watermark).toBeNull();
 		expect(syncStateMocks.setSyncResourceState).toHaveBeenCalledWith(
 			expect.objectContaining({
 				resourceId: "bootstrap_config",
 				status: "limited",
+				watermark: null,
 			}),
 		);
 	});

@@ -3,16 +3,55 @@ import { createPinia, setActivePinia } from "pinia";
 
 vi.mock("../src/offline/index", () => ({
 	isOffline: vi.fn(() => false),
+	memoryInitPromise: Promise.resolve(),
 	savePricingRulesSnapshot: vi.fn(),
 	getCachedPricingRulesSnapshot: vi.fn(() => null),
 	clearPricingRulesSnapshot: vi.fn(),
 }));
 
+import {
+	getCachedPricingRulesSnapshot,
+	isOffline,
+} from "../src/offline/index";
 import { usePricingRulesStore } from "../src/posapp/stores/pricingRulesStore";
 
 describe("pricing rules store request coordination", () => {
 	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(isOffline).mockReturnValue(false);
+		vi.mocked(getCachedPricingRulesSnapshot).mockReturnValue(null);
 		setActivePinia(createPinia());
+	});
+
+	it("hydrates the durable pricing snapshot before an offline refresh lookup", async () => {
+		(globalThis as any).frappe = { call: vi.fn() };
+		const context = JSON.stringify({
+			company: "Test Co",
+			price_list: "Retail",
+			currency: "USD",
+			customer: "",
+			customer_group: "",
+			territory: "",
+			date: "2026-07-21",
+		});
+		vi.mocked(isOffline).mockReturnValue(true);
+		vi.mocked(getCachedPricingRulesSnapshot).mockReturnValue({
+			snapshot: [{ name: "OFFLINE-TXN", apply_on: "Transaction" }],
+			context,
+			lastSync: "2026-07-21T00:00:00.000Z",
+			staleAt: "2026-07-22T00:00:00.000Z",
+		} as any);
+
+		const store = usePricingRulesStore();
+		await store.ensureActiveRules({
+			company: "Test Co",
+			price_list: "Retail",
+			currency: "USD",
+			date: "2026-07-21",
+		});
+
+		expect(store.rules.map((rule) => rule.name)).toEqual(["OFFLINE-TXN"]);
+		expect((globalThis as any).frappe?.call).not.toHaveBeenCalled();
 	});
 
 	it("deduplicates concurrent requests for the same pricing context", async () => {
@@ -34,7 +73,7 @@ describe("pricing rules store request coordination", () => {
 		const first = store.ensureActiveRules(context);
 		const second = store.ensureActiveRules(context);
 
-		expect(call).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1));
 		resolveRequest?.({ message: [{ name: "RULE-1" }] });
 		await Promise.all([first, second]);
 		expect(store.rules).toHaveLength(1);
@@ -64,6 +103,7 @@ describe("pricing rules store request coordination", () => {
 			customer: "CUST-NEW",
 		});
 
+		await vi.waitFor(() => expect(resolvers).toHaveLength(2));
 		resolvers[1]({ message: [{ name: "NEW-RULE" }] });
 		await second;
 		resolvers[0]({ message: [{ name: "OLD-RULE" }] });
