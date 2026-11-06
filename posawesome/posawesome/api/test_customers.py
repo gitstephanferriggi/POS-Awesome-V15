@@ -105,6 +105,35 @@ def _load_module():
 
 
 class TestCustomersApi(unittest.TestCase):
+    def test_balance_distinguishes_unavailable_native_summary_from_real_zero(self):
+        party = types.ModuleType('erpnext.accounts.party')
+        sys.modules['erpnext.accounts.party'] = party
+        self.module.frappe.log_error = lambda *args: None
+        self.module.frappe.get_traceback = lambda: 'synthetic failure'
+        self.module.frappe.db.get_value = lambda *args, **kwargs: 'Private customer'
+        for summary, expected, visible in [
+            (None, None, False), ([], None, True),
+            ([{'company': 'MDF', 'total_unpaid': None}], None, True),
+            ([{'company': 'OTHER', 'total_unpaid': 100}], None, True),
+            ([{'company': 'MDF', 'total_unpaid': 0, 'currency': 'EUR'}], 0, True),
+            ([{'company': 'MDF', 'total_unpaid': 125.50, 'currency': 'EUR'}], 125.50, True),
+        ]:
+            with self.subTest(summary=summary):
+                party.get_dashboard_info = lambda *args: summary
+                result = self.module.get_customer_balance('CUST', company='MDF')
+                self.assertEqual(result['balance'], expected)
+                self.assertEqual(result['customer_name'] is not None, visible)
+
+    def test_balance_failure_never_claims_customer_has_zero_balance(self):
+        party = types.ModuleType('erpnext.accounts.party')
+        sys.modules['erpnext.accounts.party'] = party
+        def fail(*args): raise PermissionError('Synthetic denied summary')
+        party.get_dashboard_info = fail
+        self.module.frappe.log_error = lambda *args: None
+        self.module.frappe.get_traceback = lambda: 'synthetic failure'
+        self.assertEqual(self.module.get_customer_balance('CUST', company='MDF'),
+                         {'balance': None, 'customer_name': None, 'currency': None})
+
     def setUp(self):
         self._orig_sys_modules = sys.modules.copy()
         self.state = _install_stubs()

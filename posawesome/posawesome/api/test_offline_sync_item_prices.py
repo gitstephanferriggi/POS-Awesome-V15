@@ -176,6 +176,27 @@ class TestOfflineSyncItemPrices(unittest.TestCase):
         self.assertFalse(second["has_more"])
         self.assertEqual(second["next_watermark"], "2026-06-01T10:01:00")
 
+    def test_large_catalogue_visits_every_page_once_and_finishes(self):
+        original = ITEM_PRICE_ROWS[:]
+        try:
+            ITEM_PRICE_ROWS[:] = [dict(original[0], name=f"IP-{i:05}") for i in range(6107)]
+            keys, offset, pages = [], 0, 0
+            while True:
+                response = self.module.sync_item_prices(pos_profile="POS-TEST", offset=str(offset), limit=500)
+                pages += 1
+                self.assertLessEqual(pages, 13, "pagination must not repeat the 2000 offset")
+                keys.extend(row["key"] for row in response["changes"])
+                if not response["has_more"]:
+                    self.assertIsNotNone(response["next_watermark"])
+                    break
+                self.assertIsNone(response["next_watermark"])
+                self.assertGreater(response["next_offset"], offset)
+                offset = response["next_offset"]
+            self.assertEqual(len(keys), 6107)
+            self.assertEqual(len(set(keys)), 6107)
+        finally:
+            ITEM_PRICE_ROWS[:] = original
+
 
 if __name__ == "__main__":
     unittest.main()

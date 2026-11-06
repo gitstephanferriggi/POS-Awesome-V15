@@ -43,6 +43,11 @@ class SalesOrderRegressionTest(unittest.TestCase):
         doc = SimpleNamespace(name='SO-TEST', docstatus=1, flags=SimpleNamespace(),
                               save=Mock(), submit=Mock())
         env['frappe'] = SimpleNamespace(get_doc=Mock(return_value=doc), flags=SimpleNamespace())
+        # Authorisation is covered separately with real profile-boundary checks.
+        # This regression isolates the existing synchronous JYSK deposit contract.
+        env['_authorized_sales_order_payload'] = lambda value: (json.loads(value), {})
+        env['_get_sales_order'] = lambda data, profile: doc
+        env['frappe'].get_installed_apps = lambda: []
         env['apply_pos_tax_inclusion_contract'] = Mock()
         payment = Mock()
         env['_create_payment_entries'] = payment

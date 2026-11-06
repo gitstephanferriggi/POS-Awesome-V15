@@ -1,6 +1,8 @@
 import frappe
 
 from posawesome.posawesome.api.offline_sync.common import (
+    _coerce_limit,
+    _coerce_offset,
     _build_response,
     _max_timestamp,
     _resolve_profile,
@@ -20,14 +22,6 @@ ITEM_PRICE_FIELDS = [
     "valid_upto",
     "modified",
 ]
-
-
-def _coerce_int(value, default, minimum=0, maximum=2000):
-    try:
-        resolved = int(value if value is not None else default)
-    except (TypeError, ValueError):
-        resolved = default
-    return max(minimum, min(resolved, maximum))
 
 
 def _selling_price_lists(profile):
@@ -93,8 +87,8 @@ def sync_item_prices(
         response["scope"] = {"price_lists": []}
         return response
 
-    resolved_offset = _coerce_int(offset, 0)
-    resolved_limit = _coerce_int(limit, 500, minimum=1)
+    resolved_offset = _coerce_offset(offset)
+    resolved_limit = _coerce_limit(limit, 500)
     filters = {"price_list": ("in", price_lists)}
     if watermark:
         filters["modified"] = [">", watermark]

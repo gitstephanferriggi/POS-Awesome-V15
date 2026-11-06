@@ -95,6 +95,29 @@ describe("usePaymentSubmission", () => {
 		]);
 	});
 
+	it.each([
+		[40, 60, 0, false, true],
+		[40, 59, 0, false, false],
+		[40, 59, 0, true, true],
+		[0, 100, 0, false, true],
+		[100, 0, 0, false, true],
+		[0, 60, 40, false, true],
+	])("validates combined cash %s card %s and customer credit %s", async (cash, card, credit, partial, allowed) => {
+		const { validateSubmission } = usePaymentSubmission({
+			invoiceDoc: ref<any>({ doctype: "Sales Invoice", is_return: 0,
+				items: [{ item_code: "JYSK-ITEM", qty: 1 }], grand_total: 100, rounded_total: 100,
+				payments: [{ mode_of_payment: "Cash", type: "Cash", amount: cash },
+					{ mode_of_payment: "Card", type: "Bank", amount: card }] }),
+			posProfile: ref({ currency: "EUR", posa_allow_partial_payment: partial }),
+			stockSettings: ref({}), invoiceType: ref("Invoice"), formatFloat: value => Number(value || 0),
+			isCashback: ref(false), paidChange: ref(0), creditChange: ref(0),
+			redeemedCustomerCredit: ref(credit), customerCreditDict: ref([]),
+			diff_payment: ref(100 - cash - card - credit),
+		});
+		if (allowed) await expect(validateSubmission(false)).resolves.toBe(true);
+		else await expect(validateSubmission(false)).rejects.toThrow("The amount paid is not complete");
+	});
+
 	it("defers print and schedules background wait when invoice submission is queued", async () => {
 		const invoiceService = (
 			await import("../src/posapp/services/invoiceService")

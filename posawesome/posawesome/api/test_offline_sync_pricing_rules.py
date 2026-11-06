@@ -59,6 +59,7 @@ RULE_ROWS = [
         }
     ),
 ]
+PRICING_RULE_QUERY_STARTS = []
 
 
 def _install_stubs():
@@ -74,6 +75,7 @@ def _install_stubs():
 
     def fake_get_all(doctype, **kwargs):
         if doctype == "Pricing Rule":
+            PRICING_RULE_QUERY_STARTS.append(kwargs.get("start"))
             filters = kwargs.get("filters") or {}
             rows = list(RULE_ROWS)
             if filters.get("company"):
@@ -187,6 +189,18 @@ class TestOfflineSyncPricingRules(unittest.TestCase):
             ],
         )
         self.assertEqual(response["next_watermark"], "2026-06-01T11:03:00")
+
+    def test_large_pagination_offset_is_not_clamped_to_page_size_limit(self):
+        PRICING_RULE_QUERY_STARTS.clear()
+
+        response = self.module.sync_pricing_rules(
+            pos_profile="POS-TEST",
+            watermark=None,
+            offset=1036000,
+        )
+
+        self.assertEqual(PRICING_RULE_QUERY_STARTS, [1036000])
+        self.assertFalse(response["has_more"])
 
 
 if __name__ == "__main__":

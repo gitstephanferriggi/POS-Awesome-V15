@@ -2,6 +2,8 @@ import frappe
 
 from posawesome.posawesome.api.offline_sync.common import (
     _build_response,
+    _coerce_limit,
+    _coerce_offset,
     _max_timestamp,
     _resolve_profile,
 )
@@ -64,14 +66,6 @@ OPTIONAL_FIELDS = [
     "other_item_group",
     "other_brand",
 ]
-
-
-def _coerce_int(value, default, minimum=0, maximum=2000):
-    try:
-        resolved = int(value if value is not None else default)
-    except (TypeError, ValueError):
-        resolved = default
-    return max(minimum, min(resolved, maximum))
 
 
 def _pricing_rule_fields():
@@ -169,8 +163,8 @@ def sync_pricing_rules(
     if not company:
         frappe.throw("POS Profile company is required")
 
-    resolved_offset = _coerce_int(offset, 0)
-    resolved_limit = _coerce_int(limit, 200, minimum=1)
+    resolved_offset = _coerce_offset(offset)
+    resolved_limit = _coerce_limit(limit, 200)
     if watermark:
         filters = {"modified": [">", watermark]}
     else:
