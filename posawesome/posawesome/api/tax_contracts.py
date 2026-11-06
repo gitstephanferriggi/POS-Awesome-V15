@@ -109,6 +109,41 @@ def validate_pos_sales_order(doc, method=None):
     apply_pos_tax_inclusion_contract(doc, recalculate=False)
 
 
+def validate_order_tax_sources(doc, method=None):
+    """Do not turn legacy orders with missing VAT rows into accounting/stock documents.
+
+    A price-list name alone cannot prove whether an old rate was inclusive.
+    Require repair of the source instead of silently guessing on the target.
+    Returns must remain possible so an existing incorrect sale can be reversed.
+    """
+    if _get_value(doc, "is_return"):
+        return
+    orders = set()
+    deliveries = set()
+    for item in _get_value(doc, "items", []) or []:
+        order = _get_value(item, "sales_order") or _get_value(item, "against_sales_order")
+        if order:
+            orders.add(order)
+        delivery = _get_value(item, "delivery_note")
+        if delivery:
+            deliveries.add(delivery)
+    for name in sorted(deliveries):
+        delivery = frappe.get_doc("Delivery Note", name)
+        orders.update(row.against_sales_order for row in delivery.items if row.against_sales_order)
+    for name in sorted(orders):
+        order = frappe.get_doc("Sales Order", name)
+        if _tax_rows(order):
+            continue
+        for item in order.items:
+            rates = frappe.parse_json(item.item_tax_rate or "{}") or {}
+            if any(flt(rate) != 0 for rate in rates.values()):
+                frappe.throw(
+                    f"Sales Order {name} has taxable items but no VAT rows. "
+                    "Ask a System Manager to repair the order VAT before creating its delivery or invoice. "
+                    "Do not add VAT again to prices already agreed with the customer."
+                )
+
+
 def check_pos_inclusive_total(doc, expected_total):
     """Reject extra VAT before submitting a POS document or taking its payment."""
     if expected_total is None or not doc.get("pos_profile"):

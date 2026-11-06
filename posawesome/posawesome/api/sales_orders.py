@@ -189,8 +189,8 @@ def repair_offline_sales_order_vat(sales_order, apply=0):
     doc.check_permission("write")
     if doc.docstatus != 1 or doc.status in ("Closed", "On Hold"):
         frappe.throw("Only an open submitted Sales Order can be repaired.")
-    for child in ("Sales Invoice Item", "Delivery Note Item"):
-        if frappe.db.exists(child, {"sales_order": sales_order, "docstatus": ["!=", 2]}):
+    for child, link_field in (("Sales Invoice Item", "sales_order"), ("Delivery Note Item", "against_sales_order")):
+        if frappe.db.exists(child, {link_field: sales_order, "docstatus": ["!=", 2]}):
             frappe.throw("An invoice or delivery already references this order; review it before repairing VAT.")
     ledger_name = frappe.db.get_value(
         "POS Invoice Submission Ledger",
@@ -243,4 +243,78 @@ def repair_offline_sales_order_vat(sales_order, apply=0):
             "Restored inclusive VAT from the original offline submission; "
             "order total and existing cash advance unchanged. " + json.dumps(result),
         )
+    return result
+
+
+@frappe.whitelist(methods=["POST"])
+def repair_legacy_inclusive_order(sales_order, pos_profile, expected_total, apply=0):
+    """Manager-reviewed repair for pre-fix orders without an offline ledger.
+
+    Caller explicitly confirms the inclusive profile and agreed gross total.
+    Only unfulfilled orders and exact, full-order draft deliveries are supported.
+    Submitted deliveries/invoices and partial or edited drafts require review.
+    No payment, stock entry, or general-ledger entry is created by this repair.
+    """
+    frappe.only_for("System Manager")
+    doc = frappe.get_doc("Sales Order", sales_order, for_update=True)
+    doc.check_permission("write")
+    if doc.docstatus != 1 or doc.status in ("Closed", "On Hold") or flt(doc.per_billed) or flt(doc.per_delivered):
+        frappe.throw("Only an open, unbilled and undelivered submitted order can be repaired.")
+    if doc.taxes:
+        frappe.throw("This order already has tax rows; no repair was applied.")
+    profile = frappe.get_doc("POS Profile", pos_profile)
+    if not cint(profile.posa_tax_inclusive) or profile.company != doc.company or profile.selling_price_list != doc.selling_price_list:
+        frappe.throw("Confirm a VAT-inclusive POS Profile with the same company and price list as the order.")
+    if doc.get("pos_profile") and doc.pos_profile != pos_profile:
+        frappe.throw("The order belongs to a different POS Profile.")
+    if expected_total is None or flt(expected_total, doc.precision("grand_total")) != flt(doc.grand_total, doc.precision("grand_total")):
+        frappe.throw("The confirmed customer total does not match the order.")
+    if frappe.db.exists("Sales Invoice Item", {"sales_order": sales_order, "docstatus": ["!=", 2]}):
+        frappe.throw("An invoice already references this order; review it before repairing VAT.")
+
+    delivery_names = frappe.get_all("Delivery Note Item", filters={"against_sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="parent")
+    deliveries = []
+    expected_items = sorted((r.name, r.item_code, flt(r.qty), flt(r.rate, 6)) for r in doc.items)
+    for name in sorted(set(delivery_names)):
+        delivery = frappe.get_doc("Delivery Note", name, for_update=True)
+        delivery.check_permission("write")
+        if delivery.docstatus != 0 or delivery.is_return:
+            frappe.throw("A submitted or return delivery requires manual VAT review.")
+        actual_items = sorted((r.so_detail or "", r.item_code, flt(r.qty), flt(r.rate, 6)) for r in delivery.items)
+        if actual_items != expected_items or any(r.against_sales_order != sales_order for r in delivery.items):
+            frappe.throw("A partial or edited draft delivery requires manual VAT review.")
+        for field in ("company", "customer", "currency", "conversion_rate", "discount_amount", "additional_discount_percentage", "apply_discount_on"):
+            if delivery.get(field) != doc.get(field):
+                frappe.throw("A draft delivery has different pricing or customer settings; review VAT manually.")
+        deliveries.append(delivery)
+
+    fields = ("net_total", "total_taxes_and_charges", "grand_total", "advance_paid")
+    before = {key: doc.get(key) for key in fields}
+    doc.pos_profile = pos_profile
+    apply_pos_tax_inclusion_contract(doc, recalculate=False)
+    if not doc.taxes:
+        frappe.throw("No tax rows were found in the POS Profile tax template.")
+    doc.calculate_taxes_and_totals()
+    _check_inclusive_order_total(doc, expected_total)
+    result = {"name": doc.name, "before": before, "after": {key: doc.get(key) for key in fields}, "deliveries": [], "applied": bool(cint(apply))}
+    tax_fields = ("charge_type", "account_head", "description", "rate", "tax_amount", "included_in_print_rate", "cost_center", "row_id", "included_in_paid_amount")
+    for delivery in deliveries:
+        previous_total = delivery.grand_total
+        delivery.pos_profile = pos_profile
+        delivery.taxes_and_charges = doc.taxes_and_charges
+        delivery.set("taxes", [{key: row.get(key) for key in tax_fields} for row in doc.taxes])
+        delivery.calculate_taxes_and_totals()
+        _check_inclusive_order_total(delivery, expected_total)
+        result["deliveries"].append({"name": delivery.name, "before_total": previous_total, "after_total": delivery.grand_total})
+    if cint(apply):
+        doc.flags.ignore_validate_update_after_submit = True
+        doc.save()
+        _check_inclusive_order_total(doc, expected_total)
+        if flt(doc.advance_paid, 2) != flt(before["advance_paid"], 2):
+            frappe.throw("The existing advance changed; VAT repair was rolled back.")
+        for delivery in deliveries:
+            delivery.save()
+            _check_inclusive_order_total(delivery, expected_total)
+            delivery.add_comment("Comment", f"Restored VAT-inclusive pricing from repaired Sales Order {doc.name}; delivery remains a draft.")
+        doc.add_comment("Comment", "Manager-confirmed legacy inclusive VAT repair; agreed total and advance unchanged. " + json.dumps(result))
     return result

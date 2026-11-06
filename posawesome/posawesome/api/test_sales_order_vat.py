@@ -213,5 +213,118 @@ class RepairTest(unittest.TestCase):
             self.call(1)
 
 
+
+
+class SourceGuardTest(unittest.TestCase):
+    def setUp(self):
+        self.env = functions('tax_contracts.py')
+        self.order = SimpleNamespace(taxes=[], items=[SimpleNamespace(item_tax_rate='{"VAT":18}')])
+        self.delivery = SimpleNamespace(items=[SimpleNamespace(against_sales_order='SO')])
+        self.fetch = Mock(side_effect=lambda dt, name: self.order if dt == 'Sales Order' else self.delivery)
+        self.env['frappe'] = SimpleNamespace(get_doc=self.fetch, parse_json=json.loads, throw=fail)
+
+    def test_blocks_both_invoice_and_delivery_with_missing_source_vat(self):
+        for field in ('sales_order', 'against_sales_order'):
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'Sales Order SO'):
+                self.env['validate_order_tax_sources']({'items': [{field: 'SO'}]})
+
+    def test_follows_delivery_to_original_order(self):
+        with self.assertRaisesRegex(ValueError, 'no VAT rows'):
+            self.env['validate_order_tax_sources']({'items': [{'delivery_note': 'DN'}]})
+
+    def test_valid_source_and_exempt_source_are_allowed(self):
+        self.order.taxes = [{'included_in_print_rate': 1}]
+        self.env['validate_order_tax_sources']({'items': [{'sales_order': 'SO'}]})
+        self.order.taxes = []
+        self.order.items[0].item_tax_rate = '{"VAT":0}'
+        self.env['validate_order_tax_sources']({'items': [{'sales_order': 'SO'}]})
+
+    def test_returns_and_unlinked_sales_are_not_blocked(self):
+        self.env['validate_order_tax_sources']({'is_return': 1, 'items': [{'sales_order': 'SO'}]})
+        self.env['validate_order_tax_sources']({'items': [{}]})
+        self.fetch.assert_not_called()
+
+    def test_repeated_source_is_checked_once(self):
+        self.order.taxes = [{}]
+        self.env['validate_order_tax_sources']({'items': [{'sales_order': 'SO'}, {'sales_order': 'SO'}]})
+        self.fetch.assert_called_once_with('Sales Order', 'SO')
+
+
+class LegacyRepairTest(unittest.TestCase):
+    def setUp(self):
+        RepairTest.setUp(self)
+        self.order.per_billed = self.order.per_delivered = 0
+        self.order.selling_price_list = 'Inclusive'
+        self.order.items = [Doc(name='ROW', item_code='A', qty=1, rate=118)]
+        self.order.taxes_and_charges = 'Regular'
+        self.profile = SimpleNamespace(posa_tax_inclusive=1, company='Shop', selling_price_list='Inclusive')
+        self.delivery = SimpleNamespace(
+            name='DN', docstatus=0, is_return=0, company='Shop', customer='Customer',
+            items=[Doc(so_detail='ROW', against_sales_order='SO', item_code='A', qty=1, rate=118)],
+            grand_total=139.24, check_permission=Mock(), save=Mock(), add_comment=Mock())
+        self.delivery.get = lambda key, default=None: getattr(self.delivery, key, default)
+        self.delivery.set = lambda key, value: setattr(self.delivery, key, value)
+        self.delivery.precision = lambda field: 2
+        self.delivery.calculate_taxes_and_totals = lambda: setattr(self.delivery, 'grand_total', 118)
+        self.frappe.get_doc.side_effect = lambda dt, *a, **k: {'Sales Order': self.order, 'POS Profile': self.profile, 'Delivery Note': self.delivery}[dt]
+        self.frappe.get_all = Mock(return_value=['DN', 'DN'])
+
+    def call(self, apply=0):
+        self.frappe.get_doc.side_effect = lambda dt, *a, **k: self.order if dt == 'Sales Order' else self.ledger
+        return self.env['repair_offline_sales_order_vat']('SO', apply)
+
+    def legacy(self, apply=0):
+        return self.env['repair_legacy_inclusive_order']('SO', 'Till', 118, apply)
+
+    def test_legacy_preview_repairs_full_draft_without_saving(self):
+        result = self.legacy()
+        self.assertEqual(result['deliveries'], [{'name': 'DN', 'before_total': 139.24, 'after_total': 118}])
+        self.order.save.assert_not_called()
+        self.delivery.save.assert_not_called()
+
+    def test_legacy_apply_keeps_deposit_and_draft_status(self):
+        self.legacy(1)
+        self.order.save.assert_called_once()
+        self.delivery.save.assert_called_once()
+        self.assertEqual(self.order.advance_paid, 118)
+        self.assertEqual(self.delivery.docstatus, 0)
+        self.order.add_comment.assert_called_once()
+
+    def test_legacy_submitted_delivery_is_blocked(self):
+        self.delivery.docstatus = 1
+        with self.assertRaisesRegex(ValueError, 'submitted or return'):
+            self.legacy(1)
+        self.order.save.assert_not_called()
+
+    def test_legacy_partial_delivery_is_blocked(self):
+        self.delivery.items[0].qty = 0.5
+        with self.assertRaisesRegex(ValueError, 'partial or edited'):
+            self.legacy(1)
+
+    def test_legacy_existing_invoice_is_blocked(self):
+        self.db.exists.return_value = True
+        with self.assertRaisesRegex(ValueError, 'invoice already'):
+            self.legacy(1)
+
+    def test_legacy_wrong_profile_is_blocked(self):
+        self.profile.company = 'Other'
+        with self.assertRaisesRegex(ValueError, 'same company'):
+            self.legacy(1)
+
+    def test_legacy_wrong_total_is_blocked(self):
+        with self.assertRaisesRegex(ValueError, 'confirmed customer total'):
+            self.env['repair_legacy_inclusive_order']('SO', 'Till', 999, 1)
+
+    def test_legacy_delivery_recalculation_must_match_order(self):
+        self.delivery.calculate_taxes_and_totals = lambda: None
+        with self.assertRaisesRegex(ValueError, 'total changed'):
+            self.legacy(1)
+        self.order.save.assert_not_called()
+
+    def test_offline_repair_uses_delivery_order_link(self):
+        self.call()
+        self.db.exists.assert_any_call('Delivery Note Item', {'against_sales_order': 'SO', 'docstatus': ['!=', 2]})
+
+
 if __name__ == '__main__':
     unittest.main()

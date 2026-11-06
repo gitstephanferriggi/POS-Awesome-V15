@@ -113,16 +113,21 @@ doc_events = {
         "validate": "posawesome.posawesome.api.customer_display.validate_adverts",
     },
     "Sales Invoice": {
+        "before_validate": "posawesome.posawesome.api.tax_contracts.validate_order_tax_sources",
         "validate": "posawesome.posawesome.api.invoice.validate",
         "before_submit": "posawesome.posawesome.api.invoice.before_submit",
         "before_cancel": "posawesome.posawesome.api.invoice.before_cancel",
         "on_cancel": "posawesome.posawesome.api.invoice.on_cancel",
     },
     "POS Invoice": {
+        "before_validate": "posawesome.posawesome.api.tax_contracts.validate_order_tax_sources",
         "validate": "posawesome.posawesome.api.invoice.validate",
         "before_submit": "posawesome.posawesome.api.invoice.before_submit",
         "before_cancel": "posawesome.posawesome.api.invoice.before_cancel",
         "on_cancel": "posawesome.posawesome.api.invoice.on_cancel",
+    },
+    "Delivery Note": {
+        "before_validate": "posawesome.posawesome.api.tax_contracts.validate_order_tax_sources",
     },
     "Customer": {
         "validate": "posawesome.posawesome.api.customer.validate",
