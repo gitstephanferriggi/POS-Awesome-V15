@@ -637,13 +637,12 @@ def get_closing_shift_overview(pos_opening_shift):
             if row["mode_of_payment"] != cash_mode_of_payment:
                 continue
 
-            overpayment_change_row = overpayment_change_totals_by_currency.get(row["currency"])
-            if overpayment_change_row:
-                row["total"] -= flt(overpayment_change_row.get("total"))
-
-                base_overpayment_change = overpayment_change_row.get("company_currency_total")
-                if base_overpayment_change:
-                    row["company_currency_total"] -= flt(base_overpayment_change)
+            # Pay entries are already signed in payments_by_mode. Only invoice
+            # change without a separate payout remains to be deducted here.
+            invoice_change_row = change_totals_by_currency.get(row["currency"])
+            if invoice_change_row:
+                row["total"] -= flt(invoice_change_row.get("total"))
+                row["company_currency_total"] -= flt(invoice_change_row.get("company_currency_total"))
 
         if cash_movement_company_currency_total:
             cash_key = (cash_mode_of_payment, company_currency)
