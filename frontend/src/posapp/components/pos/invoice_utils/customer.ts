@@ -52,7 +52,6 @@ export async function fetch_customer_details(context: any) {
 			context.customer.trim() === requestedCustomer
 		) {
 			context.customer_info = r.message;
-			await setCustomerStorage([r.message]);
 			if (context?.pos_profile?.company) {
 				const totalCredit = Number(r.message?.stored_value_balance || 0);
 				saveStoredValueSnapshot(
@@ -95,10 +94,27 @@ export async function fetch_customer_details(context: any) {
 				if (context.update_items_details)
 					await context.update_items_details(context.items);
 			}
+			// Online pricing must not wait for a slow or unavailable local cache.
+			await setCustomerStorage([r.message]);
 		}
 	} catch (error) {
 		console.error("Error fetching customer details:", error);
 	}
+}
+
+// Background refreshes of the same register must preserve the active sale's party.
+export function resolveProfileCustomer(
+	currentCustomer: string,
+	previousProfile: any,
+	nextProfile: any,
+): string {
+	const sameProfile =
+		previousProfile?.name &&
+		previousProfile.name === nextProfile?.name &&
+		previousProfile.company === nextProfile.company;
+	return sameProfile && currentCustomer
+		? currentCustomer
+		: nextProfile?.customer || "";
 }
 
 export function get_effective_price_list(context: any) {

@@ -277,8 +277,11 @@ export async function setCustomerStorage(customers: AnyRecord[]) {
 			];
 		});
 
-		await customerTable.bulkPut(clean);
-		memory.customer_storage = mergeCustomerStorageRows(clean);
+		// Vue may wrap nested DTO values after selection. IndexedDB needs plain
+		// JSON records, as do the offline queue and stored-value snapshots.
+		const records = JSON.parse(JSON.stringify(clean));
+		await customerTable.bulkPut(records);
+		memory.customer_storage = mergeCustomerStorageRows(records);
 	} catch (error) {
 		console.error("Failed to save customers to storage", error);
 	}

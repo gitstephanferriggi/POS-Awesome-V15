@@ -791,10 +791,10 @@ export const useCustomersStore = defineStore("customers", () => {
 		} else {
 			customers.value = [...customers.value, customer];
 		}
-		await setCustomerStorage([customer]);
 		syncBootstrapCustomerReadiness(Math.max(customers.value.length, 1));
 		setSelectedCustomer(customer.name);
 		requestCustomerRefresh();
+		await setCustomerStorage([customer]);
 	}
 
 	async function reloadCustomers() {

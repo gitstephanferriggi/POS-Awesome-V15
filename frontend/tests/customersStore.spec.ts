@@ -161,4 +161,25 @@ describe("customersStore profile and customer dto handling", () => {
 		expect(store.customers[0]._search_text).not.toContain("stale");
 	});
 
+	it("selects and refreshes the created customer before a pending read-model write", async () => {
+		const store = useCustomersStore();
+		store.setSelectedCustomer("Cash Sale");
+		let finish!: () => void;
+		const pending = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		setCustomerStorageMock.mockImplementationOnce(() => pending);
+		const request = store.addOrUpdateCustomer({
+			name: "New POS customer",
+			customer_name: "New POS customer",
+		});
+		try {
+			expect(store.selectedCustomer).toBe("New POS customer");
+			expect(store.refreshToken).toBeGreaterThan(0);
+		} finally {
+			finish();
+			await request;
+		}
+	});
+
 });

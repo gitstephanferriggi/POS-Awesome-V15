@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { reactive } from "vue";
 
 const persist = vi.fn();
 
@@ -228,4 +229,39 @@ describe("offline storage ownership", () => {
 		);
 		warnSpy.mockRestore();
 	});
+	it("persists nested reactive customer DTOs as cloneable records and reloads them offline", async () => {
+		const { setCustomerStorage, getStoredCustomer } = await import(
+			"../src/offline/customers"
+		);
+		const { memory } = await import("../src/offline/db");
+		memory.customer_storage = [];
+		let persisted: any[] = [];
+		customersTable.bulkPut.mockImplementation(async (rows) => {
+			persisted = structuredClone(rows);
+		});
+		const customer = reactive({
+			name: "NEW-POS-CUSTOMER",
+			customer_name: "New POS customer",
+			contact_numbers: ["+356 9912 3456"],
+			custom_details: { preferred_delivery: "Marsascala" },
+		});
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			await setCustomerStorage([customer]);
+			expect(error).not.toHaveBeenCalled();
+			expect(persisted).toEqual([
+				expect.objectContaining({
+					name: customer.name,
+					contact_numbers: ["+356 9912 3456"],
+					custom_details: { preferred_delivery: "Marsascala" },
+				}),
+			]);
+			memory.customer_storage = [];
+			customersTable.get.mockResolvedValue(persisted[0]);
+			expect(await getStoredCustomer(customer.name)).toEqual(persisted[0]);
+		} finally {
+			error.mockRestore();
+		}
+	});
+
 });

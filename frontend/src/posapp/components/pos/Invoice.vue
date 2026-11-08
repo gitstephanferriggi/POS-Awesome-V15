@@ -272,6 +272,7 @@
 <script>
 import format from "../../format";
 import { authoritativeRefundCap } from "../../utils/refundCap";
+import { resolveProfileCustomer } from "./invoice_utils/customer";
 import InvoiceCustomerSection from "./invoice/InvoiceCustomerSection.vue";
 import DeliveryCharges from "./invoice/DeliveryCharges.vue";
 import PostingDateRow from "./invoice/PostingDateRow.vue";
@@ -838,9 +839,13 @@ export default {
 		},
 
 		handleRegisterPosProfile(data) {
+			this.customer = resolveProfileCustomer(
+				this.customer,
+				this.pos_profile,
+				data.pos_profile,
+			);
 			this.pos_profile = data.pos_profile;
 			this.company = data.company || null;
-			this.customer = data.pos_profile.customer;
 			this.pos_opening_shift = data.pos_opening_shift;
 			this.stock_settings = data.stock_settings;
 
