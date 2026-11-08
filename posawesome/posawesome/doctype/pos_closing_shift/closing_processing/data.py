@@ -79,7 +79,8 @@ def get_payments_entries(pos_opening_shift, for_update=False):
         return frappe.db.sql(
             """SELECT name,mode_of_payment,paid_amount,base_paid_amount,
             paid_from_account_currency,paid_to_account_currency,target_exchange_rate,
-            reference_no,posting_date,party_type,party,payment_type
+            reference_no,posting_date,party_type,party,payment_type"""
+            + (",jysk_refund_opening_shift" if linked else "") + """
             FROM `tabPayment Entry` WHERE docstatus=1 AND company=%s AND """ + condition + """
             AND payment_type IN ('Receive','Pay') ORDER BY name FOR UPDATE""",
             values, as_dict=True,
@@ -105,5 +106,5 @@ def get_payments_entries(pos_opening_shift, for_update=False):
             "party_type",
             "party",
             "payment_type",
-        ],
+        ] + (["jysk_refund_opening_shift"] if linked else []),
     )

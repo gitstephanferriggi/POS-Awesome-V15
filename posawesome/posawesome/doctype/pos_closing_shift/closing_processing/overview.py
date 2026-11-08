@@ -71,6 +71,9 @@ def get_closing_shift_overview(pos_opening_shift):
     returns_company_currency_total = 0
     returns_count = 0
     returns_totals_by_currency = {}
+    customer_refund_count = 0
+    customer_refund_company_currency_total = 0
+    customer_refund_totals_by_currency = {}
     change_company_currency_total = 0
     change_totals_by_currency = {}
     overpayment_change_company_currency_total = 0
@@ -202,7 +205,7 @@ def get_closing_shift_overview(pos_opening_shift):
             references_by_entry[reference.get("parent")].append(reference)
 
     for entry in payment_entries:
-        if entry.get("payment_type") != "Pay":
+        if entry.get("payment_type") != "Pay" or entry.get("jysk_refund_opening_shift") == opening_shift_doc.name:
             continue
 
         references = references_by_entry.get(entry.get("name")) or []
@@ -504,7 +507,22 @@ def get_closing_shift_overview(pos_opening_shift):
         amount = multiplier * abs(raw_amount)
         base_amount = multiplier * abs(raw_base_amount)
 
-        if entry.get("payment_type") == "Pay":
+        is_customer_refund = (entry.get("payment_type") == "Pay"
+            and entry.get("jysk_refund_opening_shift") == opening_shift_doc.name)
+        if is_customer_refund:
+            customer_refund_count += 1
+            customer_refund_company_currency_total += abs(raw_base_amount)
+            refund_row = customer_refund_totals_by_currency.setdefault(payment_currency, {
+                "currency": payment_currency, "total": 0, "company_currency_total": 0,
+                "exchange_rates": set(), "invoice_count": 0,
+            })
+            refund_row["total"] += abs(raw_amount)
+            refund_row["company_currency_total"] += abs(raw_base_amount)
+            refund_row["invoice_count"] += 1
+            if payment_currency != company_currency and raw_amount:
+                refund_row["exchange_rates"].add(abs(raw_base_amount / raw_amount))
+
+        if entry.get("payment_type") == "Pay" and not is_customer_refund:
             change_row = overpayment_change_totals_by_currency.setdefault(
                 payment_currency,
                 {
@@ -763,6 +781,11 @@ def get_closing_shift_overview(pos_opening_shift):
             "count": returns_count,
             "company_currency_total": flt(returns_company_currency_total),
             "by_currency": prepare_currency_rows(returns_totals_by_currency, include_count=True),
+        },
+        "customer_refunds": {
+            "count": customer_refund_count,
+            "company_currency_total": flt(customer_refund_company_currency_total),
+            "by_currency": prepare_currency_rows(customer_refund_totals_by_currency, include_count=True),
         },
         "change_returned": {
             "company_currency_total": flt(

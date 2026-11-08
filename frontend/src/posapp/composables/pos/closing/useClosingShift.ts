@@ -210,6 +210,11 @@ export function useClosingShift(eventBus: any) {
 					},
 				),
 			},
+			customer_refunds: {
+				count: toNumber(payload.customer_refunds?.count),
+				company_currency_total: toNumber(payload.customer_refunds?.company_currency_total),
+				by_currency: normalizeCurrencyRows(payload.customer_refunds?.by_currency, { includeCount: true, includeExchangeRates: true }),
+			},
 			change_returned: normalizeChangeReturned(payload.change_returned),
 			loyalty_redemption: normalizeLoyaltyRedemption(
 				payload.loyalty_redemption,

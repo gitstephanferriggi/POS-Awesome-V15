@@ -81,6 +81,10 @@ export function useClosingSummary(
 			: [];
 	});
 
+	const customerRefundsSummary = computed(() => unref(overview)?.customer_refunds || {
+		count: 0, company_currency_total: 0, by_currency: [],
+	});
+
 	const changeReturnedSummary = computed(() => {
 		const ov = unref(overview);
 		return (
@@ -408,6 +412,14 @@ export function useClosingSummary(
 				color: "accent-secondary",
 			},
 			{
+				key: "customer-refunds",
+				label: __("Customer Refunds"),
+				value: formatCurrencyWithSymbol(customerRefundsSummary.value.company_currency_total, overviewCompanyCurrency.value),
+				caption: `${__("Refund count")}: ${formatCount(customerRefundsSummary.value.count || 0)}`,
+				icon: "mdi-cash-refund",
+				color: "accent-secondary",
+			},
+			{
 				key: "change-returned",
 				label: __("Change Returned"),
 				value: changeValue,
@@ -540,6 +552,7 @@ export function useClosingSummary(
 		paymentsByMode,
 		creditInvoicesByCurrency,
 		returnsByCurrency,
+		customerRefundsSummary,
 		changeReturnedRows,
 		cashExpectedByCurrency,
 		cashMovementSummary,

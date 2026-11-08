@@ -410,6 +410,20 @@ class TestPOSShiftTransactions(unittest.TestCase):
         self.assertEqual(select.call_args.kwargs['filters']['reference_no'],'SHIFT')
         self.assertNotIn('or_filters',select.call_args.kwargs)
 
+    def test_optional_refund_shift_link_is_returned_in_read_and_locked_queries(self):
+        from posawesome.posawesome.doctype.pos_closing_shift.closing_processing import data
+        for linked in (False, True):
+            for locked in (False, True):
+                with self.subTest(linked=linked, locked=locked), patch.object(data, "_payment_opening", return_value=SimpleNamespace(company="Company")), patch.object(data.frappe.db, "has_column", return_value=linked), patch.object(data.frappe.db, "sql", return_value=[]) as sql, patch.object(data.frappe, "get_all", return_value=[]) as select:
+                    data.get_payments_entries("SHIFT", for_update=locked)
+                    if locked:
+                        projection = sql.call_args.args[0].split("FROM")[0]
+                        self.assertEqual("jysk_refund_opening_shift" in projection, linked)
+                        select.assert_not_called()
+                    else:
+                        self.assertEqual("jysk_refund_opening_shift" in select.call_args.kwargs["fields"], linked)
+                        sql.assert_not_called()
+
     def test_payment_activity_cannot_be_read_from_another_cashiers_shift(self):
         import frappe
         from posawesome.posawesome.doctype.pos_closing_shift.closing_processing import data
