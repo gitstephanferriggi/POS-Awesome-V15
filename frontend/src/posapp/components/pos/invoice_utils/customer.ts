@@ -169,6 +169,33 @@ export function _applyPriceListRate(
 	priceCurrency: string,
 ) {
 	if (!item) return;
+	// A late customer/list refresh must move an untouched full-price line with
+	// its reference price. Keep independently agreed, discounted and source rates.
+	const numericRates = [item.rate, item.price_list_rate].every(
+		(value) =>
+			value !== null &&
+			value !== undefined &&
+			String(value).trim() !== "" &&
+			Number.isFinite(Number(value)),
+	);
+	const reprice =
+		numericRates &&
+		Number(item.rate) === Number(item.price_list_rate) &&
+		!context.isReturnInvoice &&
+		!context.invoice_doc?.is_return &&
+		Number(item.qty) >= 0 &&
+		!item._manual_rate_set &&
+		!item._manual_rate_set_from_uom &&
+		!item.locked_price &&
+		!item.posa_offer_applied &&
+		!item.is_free_item &&
+		!item.sales_order &&
+		!item.so_detail &&
+		!item.delivery_note &&
+		!item.dn_detail &&
+		!item.sales_invoice_item &&
+		!Number(item.discount_percentage || 0) &&
+		!Number(item.discount_amount || 0);
 
 	if (context._computePriceConversion) {
 		const { price_list_rate, base_price_list_rate } =
@@ -176,9 +203,26 @@ export function _applyPriceListRate(
 
 		item.price_list_rate = price_list_rate;
 		item.base_price_list_rate = base_price_list_rate;
+		if (reprice) {
+			item.rate = price_list_rate;
+			item.base_rate = base_price_list_rate;
+		}
 	} else {
 		// Fallback if _computePriceConversion is missing (should verify imports)
 		item.price_list_rate = newRate;
+		const companyCurrency =
+			getCompanyCurrency(context) || context.pos_profile?.currency;
+		const selectedCurrency =
+			getSelectedCurrency(context) || companyCurrency;
+		if (
+			reprice &&
+			priceCurrency === companyCurrency &&
+			selectedCurrency === companyCurrency
+		) {
+			item.base_price_list_rate = newRate;
+			item.rate = newRate;
+			item.base_rate = newRate;
+		}
 		// Logic for base rate conversion if missing would duplicate _computePriceConversion
 		// Assuming dependencies are met by context
 	}
