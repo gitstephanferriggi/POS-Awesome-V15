@@ -218,7 +218,7 @@ class TestPOSClosingShift(unittest.TestCase):
             SimpleNamespace(name="SINV-RET-0001"),
             SimpleNamespace(name="SINV-0002"),
         ]
-        mock_frappe.get_doc.side_effect = lambda doctype, name: {
+        mock_frappe.get_doc.side_effect = lambda doctype, name, **kwargs: {
             "SINV-RET-0001": cancelled_return,
             "SINV-0002": regular_invoice,
         }[name]
@@ -261,7 +261,8 @@ class TestPOSClosingShift(unittest.TestCase):
         mock_get_payments_entries.return_value = []
         mock_frappe.get_all.return_value = []
 
-        overview.get_closing_shift_overview("POS-OPEN-1")
+        with patch.object(creation, "authorized_opening_shift", return_value=mock_frappe.get_doc.return_value):
+            overview.get_closing_shift_overview("POS-OPEN-1")
 
         mock_get_pos_invoices.assert_called_once_with(
             "POS-OPEN-1",
@@ -317,7 +318,8 @@ class TestPOSClosingShift(unittest.TestCase):
         mock_get_payments_entries.return_value = []
         mock_frappe.get_all.return_value = []
 
-        result = overview.get_closing_shift_overview("POS-OPEN-1")
+        with patch.object(creation, "authorized_opening_shift", return_value=mock_frappe.get_doc.return_value):
+            result = overview.get_closing_shift_overview("POS-OPEN-1")
 
         self.assertEqual(result["loyalty_redemption"]["company_currency_total"], 10)
         self.assertEqual(result["loyalty_redemption"]["points"], 2)
@@ -380,7 +382,8 @@ class TestPOSClosingShift(unittest.TestCase):
         mock_get_payments_entries.return_value = []
         mock_frappe.get_all.return_value = []
 
-        result = overview.get_closing_shift_overview("POS-OPEN-1")
+        with patch.object(creation, "authorized_opening_shift", return_value=mock_frappe.get_doc.return_value):
+            result = overview.get_closing_shift_overview("POS-OPEN-1")
 
         self.assertEqual(result["loyalty_redemption"]["company_currency_total"], 10)
         self.assertEqual(result["loyalty_redemption"]["points"], 2)
@@ -388,3 +391,60 @@ class TestPOSClosingShift(unittest.TestCase):
         self.assertEqual(result["loyalty_redemption"]["by_currency"][0]["total"], 10)
         self.assertEqual(result["loyalty_redemption"]["by_currency"][0]["points"], 2)
         self.assertEqual(result["loyalty_redemption"]["by_currency"][0]["invoice_count"], 1)
+
+
+class TestPOSShiftTransactions(unittest.TestCase):
+    def test_optional_refund_check_blocks_before_printed_invoices_submit(self):
+        import frappe
+        def pending(name):
+            raise frappe.ValidationError('Executed refund awaiting Accounts')
+        with patch.object(creation,'authorized_opening_shift',return_value=SimpleNamespace(as_dict=lambda:frappe._dict(name='SHIFT'))),patch.object(frappe,'get_hooks',return_value=['refund.check']),patch.object(frappe,'get_attr',return_value=pending),patch.object(creation,'submit_printed_invoices') as submit:
+            with self.assertRaisesRegex(frappe.ValidationError,'Executed refund'):
+                creation.make_closing_shift_from_opening('{"name":"SHIFT"}')
+        submit.assert_not_called()
+
+    def test_legacy_payment_selector_works_without_optional_shift_field(self):
+        from posawesome.posawesome.doctype.pos_closing_shift.closing_processing import data
+        with patch.object(data,'_payment_opening',return_value=SimpleNamespace(company='Company')),patch.object(data.frappe.db,'has_column',return_value=False),patch.object(data.frappe,'get_all',return_value=[]) as select:
+            data.get_payments_entries('SHIFT')
+        self.assertEqual(select.call_args.kwargs['filters']['reference_no'],'SHIFT')
+        self.assertNotIn('or_filters',select.call_args.kwargs)
+
+    def test_payment_activity_cannot_be_read_from_another_cashiers_shift(self):
+        import frappe
+        from posawesome.posawesome.doctype.pos_closing_shift.closing_processing import data
+        from posawesome.posawesome.api import pos_access
+        opening=SimpleNamespace(docstatus=1,user='other',pos_profile='Profile',company='Company')
+        with patch.object(data.frappe,'get_doc',return_value=opening),patch.object(pos_access,'get_authenticated_pos_user',return_value='cashier'),patch.object(pos_access,'get_authorized_pos_profile'),patch.object(pos_access,'user_can_manage_pos',return_value=False),patch.object(data.frappe.db,'sql') as select:
+            with self.assertRaises(frappe.PermissionError):data.get_payments_entries('Other Shift')
+        select.assert_not_called()
+
+    def test_closed_current_shift_is_rejected_without_using_open_cache(self):
+        from posawesome.posawesome.api import invoice
+        shift = SimpleNamespace(name="SHIFT", status="Closed", docstatus=1,
+            pos_closing_shift="CLOSING", pos_profile="PROFILE", company="COMPANY")
+        doc = SimpleNamespace(posa_pos_opening_shift="SHIFT", pos_profile="PROFILE",
+            company="COMPANY", is_pos=1)
+        with patch.object(invoice.frappe, "get_doc", return_value=shift) as current, \
+             patch.object(invoice.frappe, "get_cached_doc", side_effect=AssertionError("Stale cache used")):
+            with self.assertRaises(invoice.frappe.ValidationError):
+                invoice.validate_shift(doc)
+        current.assert_called_once_with("POS Opening Shift", "SHIFT", for_update=True)
+
+    def test_checkout_conflict_is_readable_and_never_rolls_back_a_nested_transaction(self):
+        from posawesome.posawesome.api import invoice
+        doc = SimpleNamespace(posa_pos_opening_shift="SHIFT", pos_profile="PROFILE", is_pos=1)
+        with patch.object(invoice.frappe, "get_doc", side_effect=invoice.frappe.QueryDeadlockError), \
+             patch.object(invoice.frappe.db, "rollback") as rollback:
+            with self.assertRaisesRegex(invoice.frappe.ValidationError, "Refresh the shift"):
+                invoice.validate_shift(doc)
+        rollback.assert_not_called()
+
+    def test_closing_conflict_requires_review_of_counted_amounts(self):
+        import frappe
+        def conflict():
+            raise frappe.QueryDeadlockError
+        with patch.object(frappe.db, "rollback") as rollback:
+            with self.assertRaisesRegex(frappe.ValidationError, "review the counted amounts"):
+                creation.closing_transaction(conflict)()
+        rollback.assert_not_called()

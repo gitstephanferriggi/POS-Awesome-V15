@@ -18,6 +18,8 @@ from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.overview
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.creation import (
     make_closing_shift_from_opening,
     submit_closing_shift,
+    authorized_opening_shift,
+    run_opening_closing_checks,
 )
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.invoices import (
     submit_printed_invoices,
@@ -65,11 +67,14 @@ class POSClosingShift(Document):
             d.difference = +flt(d.closing_amount, precision) - flt(d.expected_amount, precision)
 
     def on_submit(self):
-        opening_entry = frappe.get_doc("POS Opening Shift", self.pos_opening_shift)
+        opening_entry = authorized_opening_shift(self.pos_opening_shift, for_update=True)
+        run_opening_closing_checks(self.pos_opening_shift)
+        if any(self.get(field) != opening_entry.get(field) for field in ("user", "company", "pos_profile")):
+            frappe.throw(_("Closing details do not match the POS opening shift."), frappe.PermissionError)
         opening_entry.pos_closing_shift = self.name
         opening_entry.set_status()
         self.delete_draft_invoices()
-        opening_entry.save()
+        opening_entry.save(ignore_permissions=True)
         # link invoices with this closing shift so ERPNext can block edits
         _set_closing_entry_invoices(self)
         consolidate_closing_shift_invoices(self)

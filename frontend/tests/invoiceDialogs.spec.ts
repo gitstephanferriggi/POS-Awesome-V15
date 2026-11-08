@@ -43,6 +43,7 @@ const createPaymentContext = () => ({
 
 describe("invoice payment dialogs", () => {
 	beforeEach(() => {
+		delete (window as any).jysk;
 		vi.stubGlobal("__", (value: string) => value);
 		vi.stubGlobal("frappe", { call: vi.fn() });
 		Object.defineProperty(window, "innerWidth", {
@@ -78,6 +79,31 @@ describe("invoice payment dialogs", () => {
 		expect(context.new_delivery_date).toBe(requested || "2026-11-05");
 		expect(context.eventBus.emit).toHaveBeenCalledWith("send_invoice_doc_payment",
 			expect.objectContaining({grand_total: 23.6, total_taxes_and_charges: 3.6}));
+	});
+
+	it("leaves the cart untouched before saving a draft when country completion is pending", async () => {
+		const context: any = createPaymentContext();
+		const doc = {doctype: "Sales Invoice", customer: context.customer, is_pos: 1,
+			company: "Shop Company", pos_profile: "Shop Till", posa_pos_opening_shift: "Open Till"};
+		context.get_invoice_doc = vi.fn(() => doc);
+		const check = vi.fn(async () => false);
+		(window as any).jysk = {vat: {ensure_customer: check}};
+		await show_payment(context);
+		expect(check).toHaveBeenCalledWith(doc);
+		expect(context.process_invoice).not.toHaveBeenCalled();
+		expect(context.uiStore.setActiveView).not.toHaveBeenCalled();
+		expect(context.items).toEqual([{item_code: "ITEM-001"}]);
+	});
+
+	it("checks country before native draft save and then opens payments with its totals", async () => {
+		const context: any = createPaymentContext();
+		context.get_invoice_doc = vi.fn(() => ({doctype: "Sales Invoice"}));
+		const check = vi.fn(async () => true);
+		(window as any).jysk = {vat: {ensure_customer: check}};
+		await show_payment(context);
+		expect(check.mock.invocationCallOrder[0]).toBeLessThan(context.process_invoice.mock.invocationCallOrder[0]);
+		expect(context.eventBus.emit).toHaveBeenCalledWith("send_invoice_doc_payment",
+			expect.objectContaining({grand_total: 10}));
 	});
 
 	it("switches compact layout back to the invoice when closing payments", () => {

@@ -55,6 +55,18 @@ export async function show_payment(context: any) {
 			invoiceType: context.invoiceType,
 			posProfile: context.pos_profile,
 		});
+		// Resolve missing host jurisdiction before the draft save can enqueue a
+		// compliance modal behind the payment overlay. Keep submit-time preflight
+		// as well: saved drafts/retries can reach that path independently.
+		const customerPreflight = typeof window !== "undefined"
+			? (window as any).jysk?.vat?.ensure_customer : undefined;
+		if (!isOffline() && paymentDoctype === "Sales Invoice"
+			&& !context.isReturnInvoice && !context.invoice_doc?.is_return
+			&& context.invoice_doc?.doctype !== "Sales Order"
+			&& customerPreflight && context.get_invoice_doc) {
+			const ready = await customerPreflight(context.get_invoice_doc());
+			if (!ready) return;
+		}
 		if (
 			paymentDoctype === "Sales Order" &&
 			!context.new_delivery_date &&

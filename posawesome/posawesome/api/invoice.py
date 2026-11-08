@@ -341,9 +341,12 @@ def apply_tax_inclusive(doc):
 
 def validate_shift(doc):
     if doc.posa_pos_opening_shift and doc.pos_profile and doc.is_pos:
-        # check if shift is open
-        shift = frappe.get_cached_doc("POS Opening Shift", doc.posa_pos_opening_shift)
-        if shift.status != "Open":
+        # Serialize checkout with closing; a cached Open value may outlive closure.
+        try:
+            shift = frappe.get_doc("POS Opening Shift", doc.posa_pos_opening_shift, for_update=True)
+        except frappe.QueryDeadlockError:
+            frappe.throw(_("This POS shift changed while processing the sale. Refresh the shift before retrying."))
+        if shift.status != "Open" or shift.docstatus != 1 or shift.pos_closing_shift:
             frappe.throw(_("POS Shift {0} is not open").format(shift.name))
         # check if shift is for the same profile
         if shift.pos_profile != doc.pos_profile:

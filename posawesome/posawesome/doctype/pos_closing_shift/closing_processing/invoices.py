@@ -1,5 +1,6 @@
 import frappe
 from frappe import _, DoesNotExistError
+from frappe.utils import cint
 from erpnext.accounts.doctype.pos_invoice_merge_log.pos_invoice_merge_log import (
     consolidate_pos_invoices,
 )
@@ -118,18 +119,27 @@ def _get_cancelled_return_against(invoice_doc, doctype):
     return None
 
 
-def submit_printed_invoices(pos_opening_shift, doctype):
+def submit_printed_invoices(pos_opening_shift, doctype, for_update=False):
+    if doctype not in ("Sales Invoice", "POS Invoice"):
+        frappe.throw("Choose Sales Invoice or POS Invoice")
     skipped_invoices = []
-    invoices_list = frappe.get_all(
-        doctype,
-        filters={
-            "posa_pos_opening_shift": pos_opening_shift,
-            "docstatus": 0,
-            "posa_is_printed": 1,
-        },
-    )
+    if cint(for_update):
+        invoices_list = frappe.db.sql(
+            f"SELECT name FROM `tab{doctype}` WHERE posa_pos_opening_shift=%s "
+            "AND docstatus=0 AND posa_is_printed=1 ORDER BY name FOR UPDATE",
+            pos_opening_shift, as_dict=True,
+        )
+    else:
+        invoices_list = frappe.get_all(
+            doctype,
+            filters={
+                "posa_pos_opening_shift": pos_opening_shift,
+                "docstatus": 0,
+                "posa_is_printed": 1,
+            },
+        )
     for invoice in invoices_list:
-        invoice_doc = frappe.get_doc(doctype, invoice.name)
+        invoice_doc = frappe.get_doc(doctype, invoice.name, for_update=bool(cint(for_update)))
         cancelled_return_against = _get_cancelled_return_against(invoice_doc, doctype)
         if cancelled_return_against:
             skipped_invoices.append(

@@ -1,4 +1,6 @@
 import frappe
+from functools import wraps
+from decimal import Decimal, InvalidOperation
 from frappe import _
 from frappe.utils import flt, json
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.utils import get_base_value
@@ -9,6 +11,41 @@ from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.data imp
 from posawesome.posawesome.doctype.pos_closing_shift.closing_processing.invoices import (
     submit_printed_invoices,
 )
+from posawesome.posawesome.api.pos_access import (
+    get_authenticated_pos_user, get_authorized_pos_profile, user_can_manage_pos,
+)
+
+
+
+def closing_transaction(function):
+    """Reject a conflicted snapshot; let the request roll back before a retry."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        try:
+            return function(*args, **kwargs)
+        except frappe.QueryDeadlockError:
+            frappe.throw(_("Till activity changed while preparing the closing. Reload the closing and review the counted amounts again."))
+    return wrapped
+
+
+def authorized_opening_shift(name, for_update=False):
+    """Authorize the canonical opening before reading or closing its till."""
+    user = get_authenticated_pos_user()
+    if not isinstance(name, str) or not name:
+        frappe.throw(_("Select a POS opening shift."))
+    opening = frappe.get_doc("POS Opening Shift", name, for_update=for_update)
+    get_authorized_pos_profile(opening.pos_profile, company=opening.company)
+    if opening.user != user and not user_can_manage_pos(user):
+        frappe.throw(_("You can only close your own POS shift."), frappe.PermissionError)
+    if opening.docstatus != 1 or opening.status != "Open" or opening.pos_closing_shift:
+        frappe.throw(_("Selected POS Opening Shift should be open."))
+    return opening
+
+
+def run_opening_closing_checks(name):
+    """Let installed operational apps protect unposted till activity."""
+    for handler in frappe.get_hooks("posawesome_validate_opening_close"):
+        frappe.get_attr(handler)(name)
 
 
 def build_pos_payment_reference(payment_entry):
@@ -79,15 +116,18 @@ def normalize_pos_payment_references(closing_shift_doc):
 
 
 @frappe.whitelist()
+@closing_transaction
 def make_closing_shift_from_opening(opening_shift):
     opening_shift = json.loads(opening_shift)
+    opening_shift = authorized_opening_shift(opening_shift.get("name"), for_update=True).as_dict()
+    run_opening_closing_checks(opening_shift.get("name"))
     use_pos_invoice = frappe.db.get_value(
         "POS Profile",
         opening_shift.get("pos_profile"),
         "create_pos_invoice_instead_of_sales_invoice",
     )
     doctype = "POS Invoice" if use_pos_invoice else "Sales Invoice"
-    skipped_printed_invoices = submit_printed_invoices(opening_shift.get("name"), doctype)
+    skipped_printed_invoices = submit_printed_invoices(opening_shift.get("name"), doctype, for_update=True)
     closing_shift = frappe.new_doc("POS Closing Shift")
     closing_shift.pos_opening_shift = opening_shift.get("name")
     closing_shift.period_start_date = opening_shift.get("period_start_date")
@@ -109,7 +149,7 @@ def make_closing_shift_from_opening(opening_shift):
         or "Cash"
     )
 
-    invoices = get_pos_invoices(opening_shift.get("name"), doctype, submit_printed=0)
+    invoices = get_pos_invoices(opening_shift.get("name"), doctype, submit_printed=0, for_update=True)
 
     pos_transactions = []
     taxes = []
@@ -191,7 +231,7 @@ def make_closing_shift_from_opening(opening_shift):
                     )
                 )
 
-    pos_payments = get_payments_entries(opening_shift.get("name"))
+    pos_payments = get_payments_entries(opening_shift.get("name"), for_update=True)
 
     for py in pos_payments:
         pos_payments_table.append(build_pos_payment_reference(py))
@@ -211,10 +251,10 @@ def make_closing_shift_from_opening(opening_shift):
                 )
             )
 
-    cash_movements = frappe.get_all(
-        "POS Cash Movement",
-        filters={"pos_opening_shift": opening_shift.get("name"), "docstatus": 1},
-        fields=["amount"],
+    cash_movements = frappe.db.sql(
+        "SELECT amount FROM `tabPOS Cash Movement` WHERE pos_opening_shift=%s "
+        "AND docstatus=1 ORDER BY name FOR UPDATE",
+        opening_shift.get("name"), as_dict=True,
     )
     cash_movement_total = sum(flt(row.get("amount")) for row in cash_movements)
     if cash_movement_total:
@@ -244,9 +284,33 @@ def make_closing_shift_from_opening(opening_shift):
 
 
 @frappe.whitelist()
+@closing_transaction
 def submit_closing_shift(closing_shift):
     closing_shift = json.loads(closing_shift)
-    closing_shift_doc = frappe.get_doc(closing_shift)
+    opening = authorized_opening_shift(closing_shift.get("pos_opening_shift"), for_update=True)
+    for field in ("user", "company", "pos_profile"):
+        if closing_shift.get(field) != opening.get(field):
+            frappe.throw(_("Closing details do not match the POS opening shift."), frappe.PermissionError)
+    # The cashier supplies counted amounts, never ledger totals or invoice links.
+    result = make_closing_shift_from_opening(json.dumps({"name": opening.name}))
+    closing_shift_doc = result["closing_shift"]
+    counts = {}
+    for row in closing_shift.get("payment_reconciliation", []):
+        mode = row.get("mode_of_payment")
+        if mode in counts:
+            frappe.throw(_("A payment method appears more than once."))
+        counts[mode] = row.get("closing_amount")
+    if set(counts) != {row.mode_of_payment for row in closing_shift_doc.payment_reconciliation}:
+        frappe.throw(_("Payment methods changed. Review the closing amounts again."))
+    for row in closing_shift_doc.payment_reconciliation:
+        value = counts[row.mode_of_payment]
+        try:
+            amount = Decimal(str(0 if value is None or value == "" else value))
+        except InvalidOperation:
+            frappe.throw(_("Enter a valid counted amount for every payment method."))
+        if not amount.is_finite():
+            frappe.throw(_("Enter a finite counted amount for every payment method."))
+        row.closing_amount = flt(amount)
     closing_shift_doc.flags.ignore_permissions = True
     normalize_pos_payment_references(closing_shift_doc)
     closing_shift_doc.save()

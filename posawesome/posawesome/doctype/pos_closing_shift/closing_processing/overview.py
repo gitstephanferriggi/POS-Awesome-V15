@@ -44,6 +44,9 @@ def get_closing_shift_overview(pos_opening_shift):
     if opening_shift_doc.doctype != "POS Opening Shift":
         frappe.throw(_("Unable to resolve POS Opening Shift."))
 
+    from .creation import authorized_opening_shift
+    opening_shift_doc = authorized_opening_shift(opening_shift_doc.name)
+
     pos_profile = opening_shift_doc.pos_profile
     company = opening_shift_doc.company
     company_currency = frappe.get_cached_value("Company", company, "default_currency")
