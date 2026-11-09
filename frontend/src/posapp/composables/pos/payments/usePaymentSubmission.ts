@@ -1,3 +1,4 @@
+import { customerVatPreflightDocument } from "../../../services/customerVatPreflight";
 import { unref, type Ref, type ComputedRef } from "vue";
 import { isCashLikePaymentLine } from "../../../utils/cashTender";
 import invoiceService from "../../../services/invoiceService";
@@ -808,12 +809,12 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 		// Returning false leaves the payment screen, cart and request identity intact.
 		const customerPreflight = typeof window !== "undefined"
 			? (window as any).jysk?.vat?.ensure_customer : undefined;
-		if (!isOffline() && type === "Invoice" && customerPreflight) {
-			const ready = await customerPreflight({
+		if (!isOffline() && (type === "Invoice" || type === "Order") && customerPreflight) {
+			const ready = await customerPreflight(customerVatPreflightDocument({
 				...doc,
 				doctype: resolvePosDocumentDoctype({ invoiceType: type, posProfile: profile }),
 				company: doc.company || profile?.company,
-			});
+			}, resolvePosDocumentDoctype({ invoiceType: type, posProfile: profile })));
 			if (!ready) return { customerDetailsRequired: true };
 		}
 

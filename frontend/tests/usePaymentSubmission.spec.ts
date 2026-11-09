@@ -56,6 +56,20 @@ describe("usePaymentSubmission", () => {
 		expect(onSuccess).not.toHaveBeenCalled();expect(onPrint).not.toHaveBeenCalled();expect(onFinishNavigation).not.toHaveBeenCalled();
 	});
 
+	it("keeps an order deposit untouched while requesting missing country on submit", async () => {
+		const invoiceService = (await import("../src/posapp/services/invoiceService")).default;
+		const ensure = vi.fn().mockResolvedValue(false); (window as any).jysk = {vat: {ensure_customer: ensure}};
+		const doc = {doctype: "Sales Order", name: "SO-DRAFT", customer: "Demo Customer", company: "Demo Ltd",
+			pos_profile: "Shop Till", posa_pos_opening_shift: "Own Shift", payments: [{mode_of_payment: "Cash", amount: 20}],
+			grand_total: 100, items: [{item_code: "CHAIR", qty: 1}]};
+		const before = JSON.stringify(doc);
+		const {submitInvoice} = usePaymentSubmission({invoiceDoc: ref<any>(doc), posProfile: ref({posa_allow_sales_order: 1}),
+			invoiceType: ref("Order"), stockSettings: ref({}), formatFloat: Number});
+		await expect(submitInvoice(true, {})).resolves.toEqual({customerDetailsRequired: true});
+		expect(ensure).toHaveBeenCalledWith({...doc, doctype: "Sales Invoice", name: undefined, docstatus: 0, is_pos: 1});
+		expect(invoiceService.submitInvoice).not.toHaveBeenCalled(); expect(JSON.stringify(doc)).toBe(before);
+	});
+
 	it.each([
 		["Order", "Sales Order", 0, true],
 		["Order", "Sales Order", 1, true],

@@ -95,6 +95,19 @@ describe("invoice payment dialogs", () => {
 		expect(context.items).toEqual([{item_code: "ITEM-001"}]);
 	});
 
+	it("requests missing country for an order before saving its draft or opening payment", async () => {
+		const context: any = createPaymentContext();
+		context.invoiceType = "Order"; context.pos_profile = {name: "Shop Till", posa_allow_sales_order: 1};
+		const doc = {doctype: "Sales Order", name: "SO-DRAFT", customer: context.customer,
+			company: "Shop Company", pos_profile: "Shop Till", posa_pos_opening_shift: "Own Shift", items: context.items};
+		context.get_invoice_doc = vi.fn(() => doc); const before = JSON.stringify(doc);
+		const check = vi.fn(async () => false); (window as any).jysk = {vat: {ensure_customer: check}};
+		await show_payment(context);
+		expect(check).toHaveBeenCalledWith({...doc, doctype: "Sales Invoice", name: undefined, docstatus: 0, is_pos: 1});
+		expect(context.process_invoice).not.toHaveBeenCalled(); expect(context.uiStore.openPaymentDialog).not.toHaveBeenCalled();
+		expect(JSON.stringify(doc)).toBe(before);
+	});
+
 	it("checks country before native draft save and then opens payments with its totals", async () => {
 		const context: any = createPaymentContext();
 		context.get_invoice_doc = vi.fn(() => ({doctype: "Sales Invoice"}));
