@@ -934,6 +934,9 @@ export function usePaymentSubmission(options: PaymentSubmissionOptions) {
 				cChange > 0);
 
 		if (isOffline()) {
+			if (resolvePosDocumentDoctype({ invoiceType: type, posProfile: profile }) === "Sales Order") {
+				throw new Error(__("Order deposits require an online connection. Keep this cart and reconnect before receiving payment."));
+			}
 			if (hasGiftCardRedemption) {
 				throw new Error(
 					__("Gift card redemption requires an online connection"),

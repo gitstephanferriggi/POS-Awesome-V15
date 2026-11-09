@@ -46,7 +46,7 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 		const type = unref(invoiceType);
 		const pFormatOverride = unref(printFormat);
 		const print_format =
-			pFormatOverride ||
+			(doc?.doctype === "JYSK Sales Deposit" ? "JYSK Deposit Document Pair" : doc?.deposit_exception_ack ? "JYSK Sales Order Acknowledgement" : pFormatOverride) ||
 			profile.print_format_for_online ||
 			profile.print_format;
 		const letter_head = profile.letter_head || 0;
@@ -101,7 +101,18 @@ export function usePaymentPrinting(options: PaymentPrintingOptions) {
 
 	const loadPrintPage = async (
 		input: { doc?: any; doctype?: string; name?: string; reprint?: boolean } = {},
-	) => {
+	): Promise<void> => {
+		// One print job contains the two frozen linked customer documents. Keep
+		// the submitted Sales Order as the cart's business document; only the
+		// print context changes to its immutable receipt.
+		if (input.doc?.deposit_receipt) {
+			return loadPrintPage({
+				doc: { name: input.doc.deposit_receipt, doctype: "JYSK Sales Deposit" },
+				doctype: "JYSK Sales Deposit",
+				name: input.doc.deposit_receipt,
+				reprint: input.reprint,
+			});
+		}
 		const { doc, profile, doctype, print_format, letter_head } = resolvePrintContext(input);
 
 		// --- Car Wash register: terminal-side PassPRNT print only ---

@@ -363,4 +363,29 @@ describe("usePaymentPrinting", () => {
 			expect.objectContaining({ triggerPrint: "1" }),
 		);
 	});
+	it("prints both frozen deposit documents in one job using the receipt identity", async () => {
+		const { loadPrintPage } = usePaymentPrinting({
+			invoiceDoc: ref({ name: "SO-OLD", doctype: "Sales Order" }),
+			posProfile: ref({ print_format: "An invoice format", letter_head: 0 }),
+			invoiceType: ref("Order"), printFormat: ref("A profile invoice override"),
+		});
+		await loadPrintPage({ doc: { name: "SO-NEW", doctype: "Sales Order", deposit_receipt: "DEPOSIT-ONE" }, name: "SO-NEW", doctype: "Sales Order" });
+		expect(silentPrint).toHaveBeenCalledTimes(1);
+		const url = new URL(vi.mocked(silentPrint).mock.calls[0][0]);
+		expect(url.searchParams.get("doctype")).toBe("JYSK Sales Deposit");
+		expect(url.searchParams.get("name")).toBe("DEPOSIT-ONE");
+		expect(url.searchParams.get("format")).toBe("JYSK Deposit Document Pair");
+	});
+
+	it("prints an approved zero-deposit order with its non-fiscal acknowledgement format", async () => {
+		const { loadPrintPage } = usePaymentPrinting({
+			invoiceDoc: ref({}), posProfile: ref({ print_format: "An invoice format" }),
+			invoiceType: ref("Order"), printFormat: ref("Invoice"),
+		});
+		await loadPrintPage({ doc: { name: "SO-EXCEPTION", doctype: "Sales Order", deposit_exception_ack: true } });
+		const url = new URL(vi.mocked(silentPrint).mock.calls[0][0]);
+		expect(url.searchParams.get("format")).toBe("JYSK Sales Order Acknowledgement");
+		expect(url.searchParams.get("name")).toBe("SO-EXCEPTION");
+	});
+
 });

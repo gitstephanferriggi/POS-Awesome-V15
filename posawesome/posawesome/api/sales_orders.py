@@ -134,10 +134,19 @@ def _validate_sales_order_payments(payments, profile):
 
 
 def _get_sales_order(data, profile):
+    # Browser draft state must not turn a saved order into a second insert, or
+    # downgrade a submitted order. Native ownership and flags stay server-side.
+    data = {key: value for key, value in data.items() if key not in (
+        "__islocal", "__unsaved", "__newname", "flags", "docstatus", "owner", "creation", "modified", "modified_by",
+        "jysk_deposit_required", "jysk_deposit_exception_reason", "jysk_deposit_exception_by",
+        "jysk_deposit_exception_at", "jysk_deposit_exception_hash", "jysk_checkout_deposit_receipt"
+    )}
     name = data.get("name")
     if name and frappe.db.exists("Sales Order", name):
         doc = frappe.get_doc("Sales Order", name)
         assert_document_in_pos_profile(doc, profile)
+        if doc.docstatus != 0:
+            frappe.throw("This Sales Order is already submitted. Review its saved payments instead of submitting it again.")
         doc.update(data)
         return doc
     return frappe.get_doc(data)
@@ -160,6 +169,20 @@ def update_sales_order(data):
 
 def _create_payment_entries(so_doc, payments):
     """Create payment entries referencing the sales order."""
+    actor = frappe.session.user
+    if "jysk_malta" in frappe.get_installed_apps() and not frappe.has_permission("Payment Entry", "read"):
+        from jysk_malta.services.delivery_settlement import posting_user
+
+        # ERPNext's account metadata helper requires native Payment Entry read
+        # rights. Use the existing company-restricted posting service after the
+        # caller's POS profile, customer, amounts and current shift are checked.
+        with posting_user(so_doc.company):
+            return _post_order_payments(so_doc, payments, actor)
+    return _post_order_payments(so_doc, payments, actor)
+
+
+def _post_order_payments(so_doc, payments, actor):
+    created = []
     for pay in payments or []:
         if not pay.get("amount"):
             continue
@@ -186,17 +209,39 @@ def _create_payment_entries(so_doc, payments):
                 "reference_name": so_doc.name,
             },
         )
+        pe.remarks = f"POS order deposit for {so_doc.name}; cashier {actor}; session {so_doc.get('posa_pos_opening_shift')}."
 
         pe.flags.ignore_permissions = True
         frappe.flags.ignore_account_permission = True
         pe.save()
         pe.submit()
+        created.append(pe.name)
+    return created
 
 
 @frappe.whitelist()
 def submit_sales_order(order):
     """Submit sales order and create payment entries."""
+    if "jysk_malta" in frappe.get_installed_apps():
+        from jysk_malta.services.delivery_transactions import retry_request
+
+        return retry_request(_submit_authorized_sales_order)(order)
+    return _submit_authorized_sales_order(order)
+
+
+def _submit_authorized_sales_order(order):
+    """Standalone retry rechecks profile/session authority in a fresh read view."""
     order, profile = _authorized_sales_order_payload(order)
+    if "jysk_malta" in frappe.get_installed_apps():
+        from jysk_malta.services.sales_deposit_checkout import submit_if_enabled
+        result = submit_if_enabled(order, profile, _submit_sales_order)
+        if result is not None:
+            return result
+    return _submit_sales_order(order, profile)
+
+
+def _submit_sales_order(order, profile):
+    """Existing native POS order path, also used by the atomic deposit adapter."""
     _map_delivery_dates(order)
     so_doc = _get_sales_order(order, profile)
 
@@ -210,8 +255,7 @@ def submit_sales_order(order):
 
     # Keep the deposit and order in the same request transaction. Any payment
     # failure rolls back the order; printing begins only after both are saved.
-    if payments:
-        _create_payment_entries(so_doc, payments)
+    payment_entries = _create_payment_entries(so_doc, payments) if payments else []
 
     delivery_booking = (
         "jysk_malta" in frappe.get_installed_apps()
@@ -219,4 +263,4 @@ def submit_sales_order(order):
         and so_doc.get("jysk_fulfilment_type") in ("Home Delivery", "Web Delivery", "B2B/Trade")
     )
     return {"name": so_doc.name, "status": so_doc.docstatus, "doctype": "Sales Order",
-            "delivery_booking": bool(delivery_booking)}
+            "delivery_booking": bool(delivery_booking), "payment_entries": payment_entries}

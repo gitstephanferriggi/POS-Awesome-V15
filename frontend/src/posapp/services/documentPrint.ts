@@ -15,7 +15,21 @@ export interface ConfiguredQzDocumentPrintOptions extends QzPrintDocumentOptions
 }
 
 export async function printDocumentViaConfiguredQz(options: ConfiguredQzDocumentPrintOptions) {
-	if (shouldUseRawDocumentPrinting(options.profile)) {
+	if (options.doctype === "JYSK Sales Deposit" && options.printFormat === "JYSK Deposit Document Pair") {
+		// Separate jobs preserve the printer's end-of-document cut, including
+		// long acknowledgements that need more than one roll-paper page.
+		await printDocumentViaQz({ ...options, printFormat: "JYSK Order Acknowledgement" });
+		try {
+			await printDocumentViaQz({ ...options, printFormat: "JYSK Deposit Receipt" });
+		} catch {
+			throw new Error("The acknowledgement was sent to the printer, but the deposit receipt was not confirmed. Use Receipts / Reprint and select Deposit Receipt only. The payment is already saved; do not submit it again.");
+		}
+		return;
+	}
+	// Deposit formats contain two legally distinct frozen documents. Always
+	// use their governed HTML; the generic raw invoice renderer has no deposit
+	// tax lots, acknowledgement wording or two-document layout.
+	if (shouldUseRawDocumentPrinting(options.profile) && options.doctype !== "JYSK Sales Deposit") {
 		const rawOptions: RawDocumentPrintOptions = {
 			doctype: options.doctype,
 			name: options.name,
